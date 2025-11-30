@@ -37,6 +37,17 @@ export interface CrUXResponse {
   };
 }
 
+export interface CrUXHistoryMetric {
+  histogramTimeseries: {
+    start: number;
+    end?: number;
+    densities: number[];
+  }[];
+  percentilesTimeseries: {
+    p75s: (number | null)[];
+  };
+}
+
 export interface CrUXHistoryResponse {
   record: {
     key: {
@@ -44,16 +55,9 @@ export interface CrUXHistoryResponse {
       formFactor: string;
     };
     metrics: {
-      largest_contentful_paint?: {
-        histogramTimeseries: {
-          start: number;
-          end?: number;
-          densities: number[];
-        }[];
-        percentilesTimeseries: {
-          p75s: (number | null)[];
-        };
-      };
+      largest_contentful_paint?: CrUXHistoryMetric;
+      cumulative_layout_shift?: CrUXHistoryMetric;
+      interaction_to_next_paint?: CrUXHistoryMetric;
     };
   };
 }
@@ -71,6 +75,8 @@ export interface FormFactorAnalysis {
   };
   history: {
     lcpTrend: number[];
+    clsTrend: number[];
+    inpTrend: number[];
   };
   regressions: string[];
   collectionPeriod: string;

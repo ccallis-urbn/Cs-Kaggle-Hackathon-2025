@@ -28,18 +28,23 @@ export const analyzeTrend = async (domain: string, analysis: AnalysisResult): Pr
 
     const prompt = `
       You are the **CrUX Historian Agent**.
-      Your goal is to detect anomalies and regressions in time-series data.
+      Your goal is to detect anomalies and regressions in time-series data from the last 25 weeks.
       
       **Target:** ${domain}
       
-      **Data (Phone LCP Trend):** ${JSON.stringify(analysis.phone.history.lcpTrend)}
-      **Data (Desktop LCP Trend):** ${JSON.stringify(analysis.desktop.history.lcpTrend)}
+      **Data from the last 25 weeks:**
+      - Phone LCP Trend (ms): ${JSON.stringify(analysis.phone.history.lcpTrend)}
+      - Phone CLS Trend: ${JSON.stringify(analysis.phone.history.clsTrend)}
+      - Phone INP Trend (ms): ${JSON.stringify(analysis.phone.history.inpTrend)}
+      - Desktop LCP Trend (ms): ${JSON.stringify(analysis.desktop.history.lcpTrend)}
+      - Desktop CLS Trend: ${JSON.stringify(analysis.desktop.history.clsTrend)}
+      - Desktop INP Trend (ms): ${JSON.stringify(analysis.desktop.history.inpTrend)}
 
       **Instructions:**
-      1. Analyze the trend stability. Is it flat, volatile, or degrading?
-      2. Detect any sudden jumps (>10% change).
-      3. Compare the stability of Mobile vs Desktop.
-      4. Output a brief, data-heavy paragraph focusing ONLY on the timeline.
+      1. Analyze the trend stability for ALL THREE metrics (LCP, CLS, INP). Is it flat, volatile, or degrading?
+      2. Detect any sudden jumps (>10% change) in any metric.
+      3. Compare the stability of Mobile vs Desktop across all metrics.
+      4. Output a brief, data-heavy paragraph focusing ONLY on the timeline from the last 25 weeks. Refer to it as "the last 25 weeks".
     `;
 
     try {
@@ -73,7 +78,7 @@ export const synthesizeReport = async (
 
     **Context:**
     - Domain: ${domain}
-    - Historian Notes: "${historianNotes}"
+    - Historian Notes (Analysis of the last 25 weeks): "${historianNotes}"
     
     **Raw Metrics:**
     ${JSON.stringify(analysis, null, 2)}
@@ -81,7 +86,7 @@ export const synthesizeReport = async (
     **Instructions:**
     1. **Executive Summary:** High-level health check.
     2. **Device Gap:** Explain why Mobile score (${analysis.phone.metrics.lcp.value}ms) differs from Desktop (${analysis.desktop.metrics.lcp.value}ms).
-    3. **Trend Analysis:** Incorporate the Historian's notes naturally.
+    3. **Trend Analysis:** Incorporate the Historian's notes about the 25-week trend naturally.
     4. **Recommendations:** 3 technical fix priorities.
     
     Format as clean Markdown.

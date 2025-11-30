@@ -118,6 +118,7 @@ const fetchRawData = async (domain: string, apiKeyOrProxy: string, formFactor: '
  */
 const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | null): FormFactorAnalysis => {
     const metrics = current.record.metrics;
+    const historyMetrics = history?.record.metrics;
     
     // Extract P75 (75th Percentile) - The standard for Web Vitals
     const lcp = metrics.largest_contentful_paint?.percentiles.p75 || 0;
@@ -129,10 +130,16 @@ const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | nu
     const rateCLS = (val: number) => val <= 0.1 ? 'good' : val <= 0.25 ? 'needs-improvement' : 'poor';
     const rateINP = (val: number) => val <= 200 ? 'good' : val <= 500 ? 'needs-improvement' : 'poor';
 
-    const lcpHistoryRaw = history?.record.metrics.largest_contentful_paint?.percentilesTimeseries.p75s;
-    const lcpTrend = Array.isArray(lcpHistoryRaw) 
-        ? lcpHistoryRaw.filter((x): x is number => typeof x === 'number') 
-        : [lcp];
+    const getTrend = (historyMetric: any, currentMetric: number | string) => {
+        const trendData = historyMetric?.percentilesTimeseries.p75s;
+        return Array.isArray(trendData) 
+            ? trendData.filter((x): x is number => typeof x === 'number') 
+            : [Number(currentMetric)];
+    };
+
+    const lcpTrend = getTrend(historyMetrics?.largest_contentful_paint, lcp);
+    const clsTrend = getTrend(historyMetrics?.cumulative_layout_shift, cls);
+    const inpTrend = getTrend(historyMetrics?.interaction_to_next_paint, inp);
 
     const regressions: string[] = [];
     
@@ -161,7 +168,7 @@ const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | nu
         cls: { value: Number(cls), rating: rateCLS(Number(cls)) },
         inp: { value: inp, rating: rateINP(inp) },
       },
-      history: { lcpTrend },
+      history: { lcpTrend, clsTrend, inpTrend },
       regressions,
       collectionPeriod
     };

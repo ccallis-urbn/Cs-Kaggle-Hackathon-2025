@@ -3,6 +3,7 @@ import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Smartphone, Monitor, ChevronDown } from 'lucide-react';
 import { AnalysisResult, FormFactorAnalysis } from '../types';
+import { TimeSeriesChart } from './TimeSeriesChart';
 
 interface ReportProps {
   markdown: string;
@@ -65,10 +66,11 @@ const MetricsGrid = ({ metrics }: { metrics: FormFactorAnalysis['metrics'] }) =>
 
 const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, reportMarkdown: string }) => {
     const [activeTab, setActiveTab] = useState<'phone' | 'desktop'>('phone');
+    const activeData = site[activeTab];
 
     return (
          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-zinc-200">Intelligence Report: {site.domain}</h3>
+            <h3 className="text-xl font-bold text-zinc-200">Intelligence Report</h3>
             {/* Tab Switcher */}
             <div className="flex space-x-2 border-b border-zinc-800 pb-2">
                 <button
@@ -97,19 +99,26 @@ const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, 
 
             {/* Conditional Metrics */}
             <div className="min-h-[140px]">
-                {activeTab === 'phone' ? (
-                    <MetricsGrid metrics={site.phone.metrics} />
-                ) : (
-                    <MetricsGrid metrics={site.desktop.metrics} />
-                )}
+                <MetricsGrid metrics={activeData.metrics} />
+            </div>
+            
+            {/* Trend Chart */}
+            <div className="space-y-4 pt-4">
+                 <h4 className="text-md font-semibold text-zinc-300">Trend Analysis (Last 25 Weeks)</h4>
+                 <div className="h-64 bg-zinc-950/50 p-4 rounded-lg border border-zinc-800">
+                    <TimeSeriesChart 
+                        history={activeData.history} 
+                        formFactor={activeTab}
+                    />
+                 </div>
             </div>
 
             {/* Regressions Warning (Context Sensitive) */}
-            {site[activeTab].regressions.length > 0 && (
+            {activeData.regressions.length > 0 && (
                 <div className="bg-amber-950/20 border border-amber-900/50 p-4 rounded-lg">
                     <h4 className="text-amber-500 text-xs font-bold uppercase tracking-wider mb-2">Detected Issues ({activeTab})</h4>
                     <ul className="list-disc list-inside text-sm text-amber-200/70 space-y-1">
-                        {site[activeTab].regressions.map((reg, i) => (
+                        {activeData.regressions.map((reg, i) => (
                             <li key={i}>{reg}</li>
                         ))}
                     </ul>

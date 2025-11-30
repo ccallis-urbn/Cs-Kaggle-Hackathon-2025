@@ -1,4 +1,5 @@
 
+
 import { AnalysisResult, LogEntry } from './types';
 
 export const CRUX_API_BASE = 'https://chromeuxreport.googleapis.com/v1/records:queryRecord';
@@ -15,6 +16,9 @@ export const MOCK_ANALYSIS: AnalysisResult = {
       },
       history: {
         lcpTrend: [2800, 2900, 2850, 3100, 3150, 3200],
+        // FIX: Add missing clsTrend and inpTrend properties to match FormFactorAnalysis type.
+        clsTrend: [0.1, 0.12, 0.11, 0.13, 0.14, 0.15],
+        inpTrend: [200, 210, 220, 230, 240, 250],
       },
       regressions: [
         "Mobile LCP has degraded by 14% over the last 6 months."
@@ -29,6 +33,9 @@ export const MOCK_ANALYSIS: AnalysisResult = {
       },
       history: {
         lcpTrend: [1100, 1150, 1200, 1200, 1180, 1200],
+        // FIX: Add missing clsTrend and inpTrend properties to match FormFactorAnalysis type.
+        clsTrend: [0.03, 0.02, 0.02, 0.025, 0.02, 0.02],
+        inpTrend: [60, 55, 50, 52, 51, 50],
       },
       regressions: [],
       collectionPeriod: "2023-01-01 to 2023-01-28"
