@@ -108,7 +108,6 @@ const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, 
                  <div className="h-64 bg-zinc-950/50 p-4 rounded-lg border border-zinc-800">
                     <TimeSeriesChart 
                         history={activeData.history} 
-                        formFactor={activeTab}
                     />
                  </div>
             </div>

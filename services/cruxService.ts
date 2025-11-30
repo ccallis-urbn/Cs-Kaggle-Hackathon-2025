@@ -119,6 +119,7 @@ const fetchRawData = async (domain: string, apiKeyOrProxy: string, formFactor: '
 const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | null): FormFactorAnalysis => {
     const metrics = current.record.metrics;
     const historyMetrics = history?.record.metrics;
+    const historyCollectionPeriods = history?.record.collectionPeriods;
     
     // Extract P75 (75th Percentile) - The standard for Web Vitals
     const lcp = metrics.largest_contentful_paint?.percentiles.p75 || 0;
@@ -157,10 +158,16 @@ const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | nu
     if (rateCLS(Number(cls)) === 'poor') regressions.push(`CLS is Poor (${cls})`);
     if (rateINP(inp) === 'poor') regressions.push(`INP is Poor (${inp}ms)`);
 
+    const formatDate = (d: CrUXDate) => `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+
     // Extract Collection Period
     const cp = current.record.collectionPeriod;
-    const formatDate = (d: CrUXDate) => `${d.year}-${d.month}-${d.day}`;
     const collectionPeriod = cp ? `${formatDate(cp.firstDate)} to ${formatDate(cp.lastDate)}` : 'Unknown';
+
+    // Generate dates for the timeline chart
+    const dates = historyCollectionPeriods?.map(period => 
+        `${formatDate(period.firstDate)} to ${formatDate(period.lastDate)}`
+    );
 
     return {
       metrics: {
@@ -168,7 +175,7 @@ const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | nu
         cls: { value: Number(cls), rating: rateCLS(Number(cls)) },
         inp: { value: inp, rating: rateINP(inp) },
       },
-      history: { lcpTrend, clsTrend, inpTrend },
+      history: { lcpTrend, clsTrend, inpTrend, dates },
       regressions,
       collectionPeriod
     };

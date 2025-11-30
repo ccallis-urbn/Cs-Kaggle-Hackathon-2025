@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Copy, Terminal } from 'lucide-react';
 
@@ -9,11 +8,11 @@ const SERVER_CODE = `/**
  * This server exposes 3 tools that route requests through your secure Google Apps Script Proxy.
  * 
  * Prerequisites:
- * 1. Node.js installed
+ * 1. Node.js v18+ (for global fetch)
  * 2. Your Google Apps Script Web App URL (v5)
  * 
  * Setup:
- * 1. npm install @modelcontextprotocol/sdk zod node-fetch
+ * 1. npm install @modelcontextprotocol/sdk zod
  * 2. export GAS_PROXY_URL="https://script.google.com/macros/s/..."
  * 3. node crux-mcp-server.js
  */
@@ -21,7 +20,6 @@ const SERVER_CODE = `/**
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import fetch from "node-fetch";
 
 // Configuration
 const PROXY_URL = process.env.GAS_PROXY_URL;
@@ -74,18 +72,16 @@ async function callProxy(params) {
 // ---------------------------------------------------------
 server.tool(
   "crux_fetch",
-  "Get current Core Web Vitals (LCP, CLS, INP) for a specific origin and form factor.",
+  "Get current Core Web Vitals (LCP, CLS, INP) for a specific origin and form factor. This provides an immediate snapshot of the user experience.",
   {
-    origin: z.string().url().describe("The origin URL (e.g., https://example.com)"),
-    formFactor: z.enum(["PHONE", "DESKTOP"]).optional().default("PHONE"),
-    url: z.string().url().optional().describe("Specific page URL (optional, defaults to origin)"),
+    origin: z.string().url().describe("The full origin URL to query (e.g., https://www.example.com)"),
+    formFactor: z.enum(["PHONE", "DESKTOP"]).optional().default("PHONE").describe("The device type to get metrics for."),
   },
-  async ({ origin, formFactor, url }) => {
+  async ({ origin, formFactor }) => {
     const result = await callProxy({
         endpoint: 'fetch',
         origin,
         formFactor,
-        url
     });
     return { content: [{ type: "text", text: result }] };
   }
@@ -97,18 +93,16 @@ server.tool(
 // ---------------------------------------------------------
 server.tool(
   "crux_history",
-  "Get 25-week historical trends for Core Web Vitals to analyze stability and regressions.",
+  "Get 25-week historical trends for Core Web Vitals to analyze performance stability and detect regressions over time.",
   {
-    origin: z.string().url().describe("The origin URL (e.g., https://example.com)"),
-    formFactor: z.enum(["PHONE", "DESKTOP"]).optional().default("PHONE"),
-    url: z.string().url().optional().describe("Specific page URL (optional)"),
+    origin: z.string().url().describe("The full origin URL to query (e.g., https://www.example.com)"),
+    formFactor: z.enum(["PHONE", "DESKTOP"]).optional().default("PHONE").describe("The device type to analyze history for."),
   },
-  async ({ origin, formFactor, url }) => {
+  async ({ origin, formFactor }) => {
     const result = await callProxy({
         endpoint: 'history',
         origin,
         formFactor,
-        url
     });
     return { content: [{ type: "text", text: result }] };
   }
@@ -120,9 +114,9 @@ server.tool(
 // ---------------------------------------------------------
 server.tool(
   "crux_compare",
-  "Fetch both Mobile and Desktop metrics simultaneously for device comparison.",
+  "Fetch both Mobile and Desktop metrics simultaneously for a direct device-to-device performance comparison.",
   {
-    origin: z.string().url().describe("The origin URL (e.g., https://example.com)"),
+    origin: z.string().url().describe("The full origin URL to compare (e.g., https://www.example.com)"),
   },
   async ({ origin }) => {
     const result = await callProxy({
@@ -170,7 +164,7 @@ export const MCPServerView = () => {
           <ol className="list-decimal list-inside text-xs text-zinc-500 space-y-2 mb-6 font-mono">
               <li>Create a file named <span className="text-zinc-300">crux-mcp-server.js</span></li>
               <li>Paste the code below into it.</li>
-              <li>Run: <span className="text-zinc-300">npm install @modelcontextprotocol/sdk zod node-fetch</span></li>
+              <li>Run: <span className="text-zinc-300">npm install @modelcontextprotocol/sdk zod</span></li>
               <li>Set your Proxy URL: <span className="text-zinc-300">export GAS_PROXY_URL="Your_Script_URL_Here"</span></li>
               <li>Run: <span className="text-zinc-300">node crux-mcp-server.js</span></li>
           </ol>

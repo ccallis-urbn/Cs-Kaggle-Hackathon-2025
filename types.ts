@@ -59,6 +59,7 @@ export interface CrUXHistoryResponse {
       cumulative_layout_shift?: CrUXHistoryMetric;
       interaction_to_next_paint?: CrUXHistoryMetric;
     };
+    collectionPeriods?: CrUXCollectionPeriod[];
   };
 }
 
@@ -77,6 +78,7 @@ export interface FormFactorAnalysis {
     lcpTrend: number[];
     clsTrend: number[];
     inpTrend: number[];
+    dates?: string[];
   };
   regressions: string[];
   collectionPeriod: string;
