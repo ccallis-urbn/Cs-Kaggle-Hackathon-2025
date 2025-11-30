@@ -1,0 +1,5 @@
+{
+  "name": "CrUX Intelligence Assistant",
+  "description": "A multi-agent performance auditor powered by Chrome User Experience Report (CrUX) data and Gemini 2.5. Features a visual agent graph, regression analysis, and MCP server integration code.",
+  "requestFramePermissions": []
+}
