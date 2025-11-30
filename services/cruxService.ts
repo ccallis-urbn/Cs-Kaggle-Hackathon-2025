@@ -1,14 +1,14 @@
-
 /**
- * cruxService.ts - The "Query Agent's" Toolbelt
+ * cruxService.ts - Toolbelt for the Query Agent
  * 
  * RESPONSIBILITY:
  * This service implements the tools required by the Query Agent to interface with the CrUX API.
+ * It handles the logic for both direct API calls and proxied requests.
  * 
- * ADK PATTERN: PARALLEL AGENT (Fan-out / Fan-in)
- * This service emulates a Parallel Agent by:
- * 1. Fanning out requests for 'fetch' (Record) and 'history' (Trends) simultaneously.
- * 2. Aggregating (Fanning in) the results into a single context object.
+ * ADK PATTERN: PARALLEL TOOL EXECUTION
+ * The `fetchCrUXData` function demonstrates a parallel pattern by fanning out
+ * simultaneous requests for both PHONE and DESKTOP data, then aggregating (fanning in)
+ * the results into a single context object for the next agent.
  */
 
 import { CRUX_API_BASE, CRUX_HISTORY_API_BASE } from '../constants';
@@ -168,14 +168,13 @@ const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | nu
 };
 
 /**
- * Main Entry Point for the Query Agent
+ * Main tool export for the Query Agent.
  */
 export const fetchCrUXData = async (domain: string, apiKeyOrProxy: string): Promise<AnalysisResult> => {
   if (!apiKeyOrProxy) throw new Error("API Key missing");
 
   try {
-    // "Query Agent" Logic:
-    // Execute Parallel Tools (Mobile Fetch AND Desktop Fetch)
+    // This tool executes the parallel data fetching logic.
     const [phoneRaw, desktopRaw] = await Promise.all([
         fetchRawData(domain, apiKeyOrProxy, 'PHONE'),
         fetchRawData(domain, apiKeyOrProxy, 'DESKTOP')

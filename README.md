@@ -1,4 +1,3 @@
-
 # CrUX Intelligence Assistant
 
 A multi-agent web performance auditing system powered by the **Chrome User Experience Report (CrUX)** and **Google Gemini 2.5**.
@@ -16,25 +15,33 @@ The **CrUX Intelligence Assistant** is an autonomous system built using **Google
 *   **Sequence** specialized analysis agents to produce high-quality narratives.
 *   **Log** everything to Google Sheets for observability.
 
-## 3. Architecture: Workflow Agents
-The system is architected using standard [ADK Workflow Patterns](https://google.github.io/adk-docs/agents/workflow-agents/):
+## 3. Architecture: A Formal ADK Implementation
+The system is architected using a formal implementation of the [ADK Workflow Patterns](https://google.github.io/adk-docs/agents/workflow-agents/). The code structure directly reflects the separation of concerns between agents and their tools.
 
-### A. The Coordinator (Loop Workflow)
-*   **Pattern:** `Loop`
-*   **Responsibility:** Iterates through a list of target domains (batch processing). It manages the session memory and handles error recovery for each item in the queue.
+### A. The Coordinator (`App.tsx`)
+*   **Pattern:** `Loop Workflow`
+*   **Responsibility:** Acts as the primary orchestrator. It manages the UI, the task queue of domains, the overall state, and invokes the specialized agents in the correct sequence.
 
-### B. The Query Agent (Parallel Workflow)
-*   **Pattern:** `Parallel` (Fan-out / Fan-in)
-*   **Responsibility:** Executes concurrent tool calls to the CrUX API (via Proxy).
-*   **Behavior:**
-    1.  **Fan-out:** Triggers `fetchCrUX(Phone)` and `fetchCrUX(Desktop)` simultaneously.
-    2.  **Fan-in:** Aggregates both datasets into a single `AnalysisResult` context for downstream agents.
+### B. Specialized Agents (`/agents`)
+This directory contains the logic for each individual agent in the workflow. Each agent is responsible for a single, well-defined task.
 
-### C. The Analyst Chain (Sequential Workflow)
-*   **Pattern:** `Sequential`
-*   **Responsibility:** Chains specialized agents where the output of one becomes the context for the next.
-    1.  **Historian Agent:** Analyzes time-series data -> Outputs "Anomaly Report".
-    2.  **Interpreter Agent:** Inputs "Anomaly Report" + Raw Data -> Outputs "Final Narrative".
+#### 1. Query Agent (`agents/queryAgent.ts`)
+*   **Pattern:** `Tool-Using Agent` (Parallel)
+*   **Responsibility:** Fetches raw performance data.
+*   **Behavior:** It uses the `fetchCrUXData` tool from its service layer to get data for both Mobile and Desktop in parallel.
+
+#### 2. Historian Agent (`agents/historianAgent.ts`)
+*   **Pattern:** `Cognitive Agent` (Sequential)
+*   **Responsibility:** Analyzes historical data to find trends and regressions.
+*   **Behavior:** It uses the `analyzeTrend` tool (an LLM prompt) to interpret time-series data passed to it by the Coordinator.
+
+#### 3. Interpreter Agent (`agents/interpreterAgent.ts`)
+*   **Pattern:** `Cognitive Agent` (Sequential)
+*   **Responsibility:** Synthesizes all available data into a final, human-readable report.
+*   **Behavior:** It takes the raw data from the Query Agent and the trend analysis from the Historian Agent and uses the `synthesizeReport` tool to generate a strategic summary.
+
+### C. The Toolbelt (`/services`)
+This directory contains the "tools" that the agents use. These are lower-level functions that interact with external APIs (CrUX, Gemini). This separation allows an agent's logic to be changed without altering the underlying API calls.
 
 ## 4. Setup Instructions
 

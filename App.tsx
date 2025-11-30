@@ -1,26 +1,26 @@
-
 /**
- * App.tsx - The Main Orchestrator
+ * App.tsx - The Coordinator Agent
  * 
- * ARCHITECTURE: ADK WORKFLOW AGENTS
+ * ARCHITECTURE: ADK WORKFLOW AGENT (Orchestrator)
  * This component acts as the "Coordinator Agent" implementing standard ADK patterns:
  * 
- * 1. LOOP WORKFLOW: Iterates through the list of target domains (Batch Processing).
- * 2. ROUTER: Validates configuration and routes to the appropriate starting state.
- * 3. SEQUENTIAL WORKFLOW: Chains the specialized sub-agents (Query -> Historian -> Interpreter).
+ * 1. STATE MACHINE: Manages the application flow by transitioning between agent states (QUERY -> HISTORIAN -> INTERPRETER).
+ * 2. TASK QUEUE: Maintains a queue of domains for batch processing (Loop pattern).
+ * 3. SEQUENTIAL WORKFLOW: Chains the specialized sub-agents, passing context through a shared 'Session Memory'.
  * 
- * STATE MANAGEMENT:
- * Uses a 'Session Memory' pattern to persist intermediate outputs from each agent step.
+ * This component's primary role is to manage state and orchestrate the other agents.
+ * The logic for the specialized agents themselves is located in the `/agents` directory.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Activity, Play, Settings, Key, Server, Globe, Sparkles, Lock, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { AgentGraph } from './components/AgentGraph';
 import { MCPServerView } from './components/MCPServerView';
 import { Report } from './components/Report';
 import { Logs } from './components/Logs';
-import { fetchCrUXData } from './services/cruxService';
-import { runInterpreterAgent, runHistorianAgent, generateBatchComparison } from './services/geminiService';
+import { runQueryAgent } from './agents/queryAgent';
+import { runHistorianAgent } from './agents/historianAgent';
+import { runInterpreterAgent, runBatchComparisonAgent } from './agents/interpreterAgent';
 import { AgentState, LogEntry, AnalysisResult, AgentMemory } from './types';
 import { INITIAL_LOGS } from './constants';
 
@@ -44,13 +44,22 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
 
-  // --- STATE ---
+  // --- CORE STATE ---
   const [domain, setDomain] = useState('');
-  
-  // Structured Session Memory
   const [memory, setMemory] = useState<AgentMemory>(INITIAL_MEMORY);
+  const [agentState, setAgentState] = useState<AgentState>(AgentState.IDLE);
+  const [logs, setLogs] = useState<LogEntry[]>(INITIAL_LOGS);
+  
+  // --- WORKFLOW STATE ---
+  const [taskQueue, setTaskQueue] = useState<string[]>([]);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [completedData, setCompletedData] = useState<AnalysisResult[]>([]);
+  const [individualReports, setIndividualReports] = useState<string[]>([]);
+  const isProcessingRef = useRef(false);
 
-  // --- CONFIGURATION MANAGEMENT ---
+  // --- UI & CONFIG STATE ---
+  const [activeTab, setActiveTab] = useState<'auditor' | 'server'>('auditor');
+  
   const getEnvKey = () => {
     try {
       if (typeof process !== 'undefined' && process.env) {
@@ -76,32 +85,23 @@ export default function App() {
     }
   }, [cruxKey, envCruxKey]);
   
-  const [agentState, setAgentState] = useState<AgentState>(AgentState.IDLE);
-  const [logs, setLogs] = useState<LogEntry[]>(INITIAL_LOGS);
-  const [activeTab, setActiveTab] = useState<'auditor' | 'server'>('auditor');
-
-  const addLog = (source: LogEntry['source'], message: string, type: LogEntry['type'] = 'info') => {
+  const addLog = useCallback((source: LogEntry['source'], message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, {
       timestamp: new Date().toLocaleTimeString(),
       source,
       message,
       type
     }]);
-  };
+  }, []);
 
   /**
-   * THE INTELLIGENCE WORKFLOW
+   * Kicks off the intelligence workflow by setting up the initial state.
    */
-  const startAudit = useCallback(async (manualDomain?: string) => {
-    let targetDomain = typeof manualDomain === 'string' ? manualDomain : domain;
-    
-    // Normalization
-    if (targetDomain && !/^https?:\/\//i.test(targetDomain)) {
-        targetDomain = `https://${targetDomain}`;
-    }
-    
-    if (!targetDomain) return;
-    if (targetDomain !== domain) setDomain(targetDomain);
+  const startAudit = useCallback((manualDomain?: string) => {
+    let targetInput = typeof manualDomain === 'string' ? manualDomain : domain;
+    if (!targetInput) return;
+
+    if (targetInput !== domain) setDomain(targetInput);
     
     if (!cruxKey) {
         addLog('Assistant', 'MISSING CONFIGURATION: Please enter your CrUX API Key or Proxy URL.', 'error');
@@ -109,129 +109,143 @@ export default function App() {
         return;
     }
 
-    // BATCH PARSING
-    const targets = targetDomain.split(',').map(s => s.trim()).filter(s => s);
-    const isBatch = targets.length > 1;
+    const targets = targetInput.split(',').map(s => {
+        let clean = s.trim();
+        if (clean && !/^https?:\/\//i.test(clean)) {
+            clean = `https://${clean}`;
+        }
+        return clean;
+    }).filter(s => s);
+    
+    if (targets.length === 0) return;
 
-    // RESET STATE
-    setAgentState(AgentState.QUERY);
+    if (targets.length > 10) {
+      addLog('Assistant', 'Batch size limited to 10. Processing the first 10 URLs.', 'warning');
+      targets.splice(10); // Limit to 10
+    }
+
+    // RESET STATE for a new run
     setLogs(INITIAL_LOGS);
-    setMemory(INITIAL_MEMORY); 
+    setMemory(INITIAL_MEMORY);
+    setCompletedData([]);
+    setIndividualReports([]);
+    setTotalTasks(targets.length);
+    setTaskQueue(targets);
     
     addLog('Assistant', `Initializing Intelligence System. Queue: ${targets.length}`, 'info');
-    const batchReports: string[] = [];
-    const batchData: AnalysisResult[] = [];
+    setAgentState(AgentState.QUERY); // This kicks off the useEffect workflow
+  }, [domain, cruxKey, addLog]);
 
-    try {
-      // ADK PATTERN: LOOP WORKFLOW
-      // Iterates through the list of targets to process them one by one.
-      for (let i = 0; i < targets.length; i++) {
-        let currentTarget = targets[i];
-        if (!/^https?:\/\//i.test(currentTarget)) currentTarget = `https://${currentTarget}`;
 
-        addLog('Assistant', `[${i+1}/${targets.length}] Routing ${currentTarget}`, 'info');
+  /**
+   * THE INTELLIGENCE WORKFLOW - State Machine
+   * This effect runs when the agent state or task queue changes,
+   * orchestrating the sequence of agent operations.
+   */
+  useEffect(() => {
+    const isWorkflowActive = agentState !== AgentState.IDLE && agentState !== AgentState.COMPLETE && agentState !== AgentState.ERROR;
+    if (!isWorkflowActive || isProcessingRef.current) {
+      return;
+    }
 
-        // ============================================
-        // ADK PATTERN: PARALLEL AGENT (Fan-out)
-        // Responsibility: Fetch Mobile + Desktop data simultaneously.
-        // ============================================
-        setAgentState(AgentState.QUERY);
-        if (cruxKey.startsWith('http')) {
-            addLog('Query Agent', `Calling Tools: fetch + history (via Proxy)`, 'info');
-        } else {
-            addLog('Query Agent', `Calling Tools: CrUX API (Direct)`, 'info');
-        }
+    const processTask = async () => {
+        isProcessingRef.current = true;
+        const currentTarget = taskQueue[0];
+        
+        if (!currentTarget) {
+            // Queue is empty, check if we need to finalize a batch job
+            if (totalTasks > 1) {
+                addLog('Interpreter', 'Finalizing batch comparison...', 'info');
+                const comparison = await runBatchComparisonAgent(completedData);
 
-        const analyzedData = await fetchCrUXData(currentTarget, cruxKey);
-        
-        // MEMORY COMMIT
-        setMemory(prev => ({
-            ...prev,
-            query: { lastDomain: currentTarget, lastRawResults: analyzedData }
-        }));
-        addLog('Query Agent', `Committed raw results to Session Memory.`, 'success');
-        
-        // ============================================
-        // ADK PATTERN: SEQUENTIAL CHAIN (Step 1)
-        // Historian Agent analyzes the data from the Query Agent.
-        // ============================================
-        setAgentState(AgentState.HISTORIAN);
-        addLog('Historian', `Reading raw data from memory...`, 'info');
-        await new Promise(r => setTimeout(r, 600)); 
-        
-        const historianNotes = await runHistorianAgent(currentTarget, analyzedData);
-        
-        // MEMORY COMMIT
-        setMemory(prev => ({
-            ...prev,
-            historian: { 
-                lastTrend: historianNotes,
-                lastHistoryData: {
-                    phone: analyzedData.phone.history.lcpTrend,
-                    desktop: analyzedData.desktop.history.lcpTrend
-                }
-            }
-        }));
-        addLog('Historian', `Committed trend analysis to Session Memory.`, 'success');
+                const finalMarkdownOutput = `# 📊 Comparative Conclusion\n\n${comparison}`;
 
-        // ============================================
-        // ADK PATTERN: SEQUENTIAL CHAIN (Step 2)
-        // Interpreter Agent synthesizes findings from previous steps.
-        // ============================================
-        setAgentState(AgentState.INTERPRETER);
-        addLog('Interpreter', `Synthesizing final report...`, 'info');
-        
-        const markdown = await runInterpreterAgent(currentTarget, analyzedData, historianNotes);
-        
-        // MEMORY COMMIT
-        setMemory(prev => ({
-            ...prev,
-            interpreter: {
-                lastAnalysis: analyzedData,
-                lastRecommendations: markdown
-            }
-        }));
-        
-        batchReports.push(markdown);
-        batchData.push(analyzedData);
-
-        // --- BATCH COMPLETION & COMPARISON ---
-        if (i === targets.length - 1) {
-             let finalMarkdownOutput = "";
-             if (isBatch) finalMarkdownOutput += "# 📑 Batch Audit Report\n\n";
-             
-             batchReports.forEach((report, idx) => {
-                if (isBatch) finalMarkdownOutput += `\n---\n\n## 🔍 Origin: ${batchData[idx].domain}\n\n`;
-                finalMarkdownOutput += report;
-             });
-
-             if (isBatch) {
-                addLog('Interpreter', `Comparing batch results...`, 'info');
-                const comparison = await generateBatchComparison(batchData);
-                finalMarkdownOutput += `\n\n---\n\n# 📊 Comparative Conclusion\n\n${comparison}`;
-                
                 setMemory(prev => ({
                     ...prev,
-                    interpreter: {
-                        ...prev.interpreter,
-                        lastRecommendations: finalMarkdownOutput
-                    }
+                    // Store the last item for consistency, but completedData is the source of truth for batch reports
+                    query: { ...prev.query, lastRawResults: completedData[completedData.length - 1] }, 
+                    interpreter: { ...prev.interpreter, lastRecommendations: finalMarkdownOutput }
                 }));
-             }
-
-             addLog('Assistant', `Intelligence cycle complete.`, 'success');
-             setAgentState(AgentState.COMPLETE);
-        } else {
-             addLog('Assistant', `Cycle complete for ${currentTarget}. Next...`, 'success');
-             await new Promise(r => setTimeout(r, 800)); 
+            }
+            addLog('Assistant', 'Intelligence cycle complete.', 'success');
+            setAgentState(AgentState.COMPLETE);
+            isProcessingRef.current = false;
+            return;
         }
-      }
 
-    } catch (err: any) {
-      addLog('Assistant', `System Failure: ${err.message}`, 'error');
-      setAgentState(AgentState.ERROR);
-    }
-  }, [domain, cruxKey]);
+        try {
+            const taskNumber = totalTasks - taskQueue.length + 1;
+            addLog('Assistant', `[${taskNumber}/${totalTasks}] Processing ${currentTarget}`, 'info');
+
+            switch (agentState) {
+                // ============================================
+                // STEP 1: Invoke Query Agent
+                // ============================================
+                case AgentState.QUERY:
+                    addLog('Assistant', 'Dispatching: Query Agent', 'info');
+                    const analyzedData = await runQueryAgent(currentTarget, cruxKey);
+                    
+                    setMemory(prev => ({ ...prev, query: { lastDomain: currentTarget, lastRawResults: analyzedData } }));
+                    addLog('Query Agent', 'Committed raw results to Session Memory.', 'success');
+                    setAgentState(AgentState.HISTORIAN);
+                    break;
+
+                // ============================================
+                // STEP 2: Invoke Historian Agent
+                // ============================================
+                case AgentState.HISTORIAN:
+                    addLog('Assistant', 'Dispatching: Historian Agent', 'info');
+                    const dataForHistorian = memory.query.lastRawResults;
+                    if (!dataForHistorian) throw new Error("Memory inconsistency: Query data not found for Historian.");
+                    
+                    const historianNotes = await runHistorianAgent(currentTarget, dataForHistorian);
+                    
+                    setMemory(prev => ({ ...prev, historian: { lastTrend: historianNotes, lastHistoryData: null } }));
+                    addLog('Historian', 'Committed trend analysis to Session Memory.', 'success');
+                    setAgentState(AgentState.INTERPRETER);
+                    break;
+                
+                // ============================================
+                // STEP 3: Invoke Interpreter Agent
+                // ============================================
+                case AgentState.INTERPRETER:
+                    addLog('Assistant', 'Dispatching: Interpreter Agent', 'info');
+                    const dataForInterpreter = memory.query.lastRawResults;
+                    const notesForInterpreter = memory.historian.lastTrend;
+                    if (!dataForInterpreter || notesForInterpreter === null) throw new Error("Memory inconsistency: Data not found for Interpreter.");
+                    
+                    const markdown = await runInterpreterAgent(currentTarget, dataForInterpreter, notesForInterpreter);
+                                        
+                    setMemory(prev => ({ ...prev, interpreter: { lastAnalysis: dataForInterpreter, lastRecommendations: markdown } }));
+                    
+                    // Update batch tracking state
+                    setCompletedData(prev => [...prev, dataForInterpreter]);
+                    setIndividualReports(prev => [...prev, markdown]);
+
+                    // Dequeue and decide next step
+                    addLog('Assistant', `Cycle complete for ${currentTarget}.`, 'success');
+                    const remainingTasks = taskQueue.slice(1);
+                    setTaskQueue(remainingTasks);
+                    
+                    // If more tasks, loop back to QUERY. 
+                    // If not, the effect will re-run with an empty queue and trigger completion.
+                    if (remainingTasks.length > 0) {
+                        await new Promise(r => setTimeout(r, 800)); // Pause before next cycle
+                        setAgentState(AgentState.QUERY);
+                    }
+                    break;
+            }
+        } catch (err: any) {
+            addLog('Assistant', `System Failure: ${err.message}`, 'error');
+            setAgentState(AgentState.ERROR);
+        } finally {
+            isProcessingRef.current = false;
+        }
+    };
+
+    processTask();
+  }, [agentState, taskQueue, cruxKey, addLog, completedData, individualReports, memory, totalTasks]);
+
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
@@ -379,6 +393,8 @@ export default function App() {
                         <Report 
                             markdown={memory.interpreter.lastRecommendations} 
                             data={memory.query.lastRawResults} 
+                            batchData={completedData.length > 1 ? completedData : undefined}
+                            individualReports={completedData.length > 1 ? individualReports : undefined}
                         />
                     )}
                     

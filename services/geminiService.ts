@@ -1,18 +1,11 @@
-
 /**
- * geminiService.ts - The Brains (Historian & Interpreter Agents)
+ * geminiService.ts - Toolbelt for Cognitive Agents
  * 
  * RESPONSIBILITY:
- * This service interfaces with Google Gemini 2.5 to provide the cognitive layer.
- * It implements two distinct agent personas:
- * 
- * 1. HISTORIAN AGENT: A data analyst focused on time-series stability and anomaly detection.
- *    - Temp: 0.3 (Low randomness for analytical precision).
- *    - Task: Detect regressions in the LCP trend.
- * 
- * 2. INTERPRETER AGENT: A strategic consultant focused on actionable advice.
- *    - Temp: 0.5 (Balanced for creative but grounded writing).
- *    - Task: Synthesize metrics + Historian notes into a report.
+ * This service provides tools that interface with the Google Gemini API. These tools
+ * are called by the higher-level "Cognitive Agents" (Historian, Interpreter) to
+ * perform analysis and generate reports. Each function represents a distinct
+ * capability in the agent's toolbelt.
  */
 
 import { GoogleGenAI } from "@google/genai";
@@ -24,16 +17,12 @@ const getAI = () => {
     return new GoogleGenAI({ apiKey });
 }
 
-export const generateRecommendations = async (domain: string, analysis: AnalysisResult): Promise<string> => {
-    // Legacy support, redirects to Interpreter
-    return runInterpreterAgent(domain, analysis, "No historian notes available.");
-};
-
 /**
- * AGENT 3: CrUX Historian Agent
- * Purpose: Identify trends, anomalies, and regressions.
+ * TOOL: analyzeTrend
+ * Called by the Historian Agent to detect anomalies and regressions in time-series data.
+ * It uses a low temperature for analytical precision.
  */
-export const runHistorianAgent = async (domain: string, analysis: AnalysisResult): Promise<string> => {
+export const analyzeTrend = async (domain: string, analysis: AnalysisResult): Promise<string> => {
     const ai = getAI();
     if (!ai) return "Historian Analysis: Simulation Mode (No AI Key)";
 
@@ -66,10 +55,11 @@ export const runHistorianAgent = async (domain: string, analysis: AnalysisResult
 }
 
 /**
- * AGENT 2: CrUX Interpretation Agent
- * Purpose: Synthesize raw data + Historian findings into a narrative.
+ * TOOL: synthesizeReport
+ * Called by the Interpreter Agent to synthesize raw data and historian notes into a strategic report.
+ * It uses a balanced temperature for creative but grounded writing.
  */
-export const runInterpreterAgent = async (
+export const synthesizeReport = async (
   domain: string,
   analysis: AnalysisResult,
   historianNotes: string
@@ -114,7 +104,11 @@ export const runInterpreterAgent = async (
   }
 };
 
-export const generateBatchComparison = async (results: AnalysisResult[]): Promise<string> => {
+/**
+ * TOOL: compareBatchResults
+ * Called by the Interpreter Agent (when in batch mode) to create a final comparison report.
+ */
+export const compareBatchResults = async (results: AnalysisResult[]): Promise<string> => {
   const ai = getAI();
   if (!ai) return "## Comparative Analysis\n\n*Comparison unavailable in simulation mode.*";
   
