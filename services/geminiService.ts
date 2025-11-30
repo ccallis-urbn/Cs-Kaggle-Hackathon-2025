@@ -1,4 +1,20 @@
 
+/**
+ * geminiService.ts - The Brains (Historian & Interpreter Agents)
+ * 
+ * RESPONSIBILITY:
+ * This service interfaces with Google Gemini 2.5 to provide the cognitive layer.
+ * It implements two distinct agent personas:
+ * 
+ * 1. HISTORIAN AGENT: A data analyst focused on time-series stability and anomaly detection.
+ *    - Temp: 0.3 (Low randomness for analytical precision).
+ *    - Task: Detect regressions in the LCP trend.
+ * 
+ * 2. INTERPRETER AGENT: A strategic consultant focused on actionable advice.
+ *    - Temp: 0.5 (Balanced for creative but grounded writing).
+ *    - Task: Synthesize metrics + Historian notes into a report.
+ */
+
 import { GoogleGenAI } from "@google/genai";
 import { AnalysisResult } from '../types';
 
@@ -103,8 +119,8 @@ export const generateBatchComparison = async (results: AnalysisResult[]): Promis
   if (!ai) return "## Comparative Analysis\n\n*Comparison unavailable in simulation mode.*";
   
   const minimizedData = results.map(r => ({
-      domain: r.domain,
-      period: r.phone.collectionPeriod, // Data source period
+      audited_url: r.domain,
+      collectionPeriod: r.phone.collectionPeriod || "N/A",
       endpoint: "CrUX Record API",
       mobile_lcp: r.phone.metrics.lcp.value,
       mobile_inp: r.phone.metrics.inp.value,
@@ -115,28 +131,26 @@ export const generateBatchComparison = async (results: AnalysisResult[]): Promis
   }));
 
   const prompt = `
-    You are analyzing a batch of ${results.length} websites.
+    You are a precise data analyst creating a performance scorecard for a batch of ${results.length} websites.
     
-    **Batch Data:**
+    **Input Data:**
     ${JSON.stringify(minimizedData, null, 2)}
 
-    **Task:**
-    1. **Metric Scoreboard:** Create a comprehensive Markdown table listing **every origin**. 
-       The table must include the following columns:
-       - Origin
-       - Data Collection Period
-       - Source Endpoint (should be "CrUX Record")
-       - Mobile LCP
-       - Desktop LCP
-       - Mobile INP
-       - Desktop INP
-       - Mobile CLS
-       - Desktop CLS
+    **Directives:**
+    1. **Master Scoreboard Table (MANDATORY):** 
+       - Generate a Markdown table immediately at the top.
+       - The table MUST have a row for **EVERY** URL in the input data.
+       - Use these exact headers:
+         | URL | Date Range | Mobile LCP | Mobile CLS | Mobile INP | Desktop LCP | Desktop CLS | Desktop INP |
+       - Fill in the values exactly from the input data.
        
-    2. **Rankings:** Rank the domains by Mobile LCP (Fastest to Slowest).
-    3. **Performance Winner:** Identify the "Performance Winner" based on overall health.
-    4. **Needs Most Improvement:** Identify the site that needs the most attention.
-    5. **Verdict:** A comparative conclusion identifying common patterns or outliers.
+    2. **Comparative Analysis:**
+       - **Fastest Site:** Which URL has the best Mobile LCP?
+       - **Needs Attention:** Which URL has the worst metrics overall?
+       - **Pattern Recognition:** Are there shared issues? (e.g. "All sites struggle with INP").
+       - **Verdict:** Declare a clear performance winner.
+       
+    Do not skip any URLs in the table.
   `;
 
   try {
