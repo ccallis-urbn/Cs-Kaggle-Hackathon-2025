@@ -3,12 +3,22 @@ import { FormFactorAnalysis } from '../types';
 
 interface TimeSeriesChartProps {
   history: FormFactorAnalysis['history'];
+  metric: 'lcp' | 'cls' | 'inp';
+  hoveredPoint: number | null;
+  onHover: (index: number | null, metric: 'lcp' | 'cls' | 'inp') => void;
+  isHoverTarget: boolean;
 }
 
 const COLORS = {
   lcp: '#818cf8',
   cls: '#f59e0b',
   inp: '#34d399',
+};
+
+const METRIC_CONFIG = {
+    lcp: { color: COLORS.lcp, label: 'LCP Trend', unit: 'ms' },
+    cls: { color: COLORS.cls, label: 'CLS Trend', unit: '' },
+    inp: { color: COLORS.inp, label: 'INP Trend', unit: 'ms' },
 };
 
 const useParentSize = (ref: React.RefObject<HTMLElement>) => {
@@ -30,112 +40,90 @@ const useParentSize = (ref: React.RefObject<HTMLElement>) => {
 };
 
 const generateTicks = (min: number, max: number, count = 4) => {
-  if (max === min) return [min];
+  if (max === min || !isFinite(max) || !isFinite(min)) return [min || 0];
   const ticks = [];
-  const step = (max - min) / count;
+  const range = max - min;
+  if (range <= 0) return [min];
+  const step = range / count;
   for (let i = 0; i <= count; i++) {
     ticks.push(min + i * step);
   }
   return ticks;
 };
 
-export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history }) => {
+export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history, metric, hoveredPoint, onHover, isHoverTarget }) => {
   const ref = React.useRef<HTMLDivElement>(null);
   const { width, height } = useParentSize(ref);
-  const [hoveredPoint, setHoveredPoint] = React.useState<number | null>(null);
-  const [debug, setDebug] = React.useState(false); // Default to false
 
   if (width === 0 || height === 0) return <div ref={ref} className="w-full h-full" />;
 
-  const padding = { top: 20, right: 60, bottom: 50, left: 60 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-
-  const lcpData = history?.lcpTrend || [];
-  const clsData = history?.clsTrend || [];
-  const inpData = history?.inpTrend || [];
-  const dates = history?.dates || [];
+  const config = METRIC_CONFIG[metric];
+  const data = (history as any)[`${metric}Trend`] as number[] || [];
+  const { lcpTrend: lcpData = [], clsTrend: clsData = [], inpTrend: inpData = [], dates = [] } = history;
   
-  const dataLength = Math.max(lcpData.length, clsData.length, inpData.length);
+  const dataLength = data.length;
   
   if (dataLength < 2) {
     return (
-      <div ref={ref} className="w-full h-full flex items-center justify-center text-zinc-600 text-sm">
-        Not enough historical data to plot a trend.
+      <div ref={ref} className="w-full h-full flex flex-col items-center justify-center text-zinc-600 text-sm">
+        <div className="text-xs text-zinc-400 font-semibold mb-2">{config.label}</div>
+        <div>Not enough data.</div>
       </div>
     );
   }
 
-  const hasTimeData = lcpData.length > 0 || inpData.length > 0;
-  const hasClsData = clsData.length > 0;
+  // Increased padding for better visibility
+  const padding = { top: 40, right: 30, bottom: 60, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
 
-  const timeMax = hasTimeData ? Math.max(...lcpData, ...inpData) : 5000;
-  const timeScaleMin = 0;
-  const timeScaleMax = timeMax * 1.1;
-  
-  const clsMax = hasClsData ? Math.max(...clsData, 0.25) : 0.25;
-  const clsScaleMin = 0;
-  const clsScaleMax = clsMax * 1.1;
-
-  const debugInfo = {
-    clsData: clsData.slice(0, 5),
-    clsDataLength: clsData.length,
-    hasClsData,
-    clsMax,
-    clsScaleMin,
-    clsScaleMax,
-  };
+  const dataMax = data.length > 0 ? Math.max(...data, 0) : 0;
+  const yMax = metric === 'cls' ? Math.max(dataMax, 0.1) : dataMax; // Give CLS a minimum range
+  const yMin = 0;
+  const yScaleMax = yMax === 0 ? 1 : yMax * 1.1;
 
   const xScale = (index: number) => padding.left + (index / (dataLength - 1)) * chartWidth;
-  const yTimeScale = (value: number) => {
-    const normalized = value / timeScaleMax;
-    return padding.top + chartHeight * (1 - normalized);
-  };
-  const yClsScale = (value: number) => {
-    const normalized = value / clsScaleMax;
+  const yScale = (value: number) => {
+    if (yScaleMax === 0) return padding.top + chartHeight;
+    const normalized = (value - yMin) / (yScaleMax - yMin);
     return padding.top + chartHeight * (1 - normalized);
   };
 
-  const createPath = (data: number[], scale: (v:number) => number) =>
-    data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${scale(d)}`).join(' ');
+  const path = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(d)}`).join(' ');
 
-  const lcpPath = lcpData.length > 1 ? createPath(lcpData, yTimeScale) : '';
-  const inpPath = inpData.length > 1 ? createPath(inpData, yTimeScale) : '';
-  const clsPath = clsData.length > 1 ? createPath(clsData, yClsScale) : '';
+  const getStartDate = () => (dates.length > 0 ? dates[0].split(' to ')[0] : 'Start');
+  const getEndDate = () => (dates.length > 0 ? dates[dates.length - 1].split(' to ')[1] : 'End');
 
-  const getStartDate = () => {
-    if (dates.length > 0) {
-      return dates[0].split(' to ')[0];
-    }
-    return '25 weeks ago';
-  };
-
-  const getEndDate = () => {
-    if (dates.length > 0) {
-      return dates[dates.length - 1].split(' to ')[1];
-    }
-    return 'Today';
-  };
-
-  const yTimeAxisTicks = hasTimeData ? generateTicks(timeScaleMin, timeScaleMax, 5) : [];
-  const yClsAxisTicks = hasClsData ? generateTicks(clsScaleMin, clsScaleMax, 5) : [];
+  const yAxisTicks = generateTicks(yMin, yScaleMax, 4);
 
   return (
-    <div ref={ref} className="w-full h-full relative bg-zinc-950">
+    <div ref={ref} className="w-full h-full relative">
       <svg
         width="100%"
         height="100%"
         viewBox={`0 0 ${width} ${height}`}
         className="font-sans"
-        onMouseLeave={() => setHoveredPoint(null)}
+        onMouseLeave={() => onHover(null, metric)}
       >
-        {hasTimeData && yTimeAxisTicks.map((tick, i) => (
-          <g key={`y-time-${i}`} className="text-zinc-600 text-[11px]">
+        <text
+            x={width / 2}
+            y={padding.top / 2}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            className="text-zinc-400 text-sm fill-current font-semibold"
+        >
+            {config.label}
+        </text>
+
+        {/* Y Axis */}
+        <g className="text-zinc-600 text-[13px]">
+        {yAxisTicks.map((tick, i) => (
+          <g key={`y-tick-${i}`}>
             <line
               x1={padding.left}
-              y1={yTimeScale(tick)}
+              y1={yScale(tick)}
               x2={width - padding.right}
-              y2={yTimeScale(tick)}
+              y2={yScale(tick)}
               stroke="currentColor"
               strokeWidth="0.5"
               strokeDasharray="2,3"
@@ -143,49 +131,28 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history }) => 
             />
             <text
               x={padding.left - 8}
-              y={yTimeScale(tick)}
+              y={yScale(tick)}
               dominantBaseline="middle"
               textAnchor="end"
               className="fill-current"
             >
-              {Math.round(tick)}
+              {metric === 'cls' ? tick.toFixed(2) : Math.round(tick)}
             </text>
           </g>
         ))}
-        {hasTimeData && <text
-          x="15"
+        </g>
+        <text
+          x={15}
           y={height / 2}
           transform={`rotate(-90, 15, ${height / 2})`}
           textAnchor="middle"
-          className="text-zinc-500 text-[10px] fill-current uppercase tracking-wider font-semibold"
+          className="text-zinc-500 text-xs fill-current uppercase tracking-wider font-semibold"
         >
-          ms (LCP/INP)
-        </text>}
+          {config.unit || 'Score'}
+        </text>
 
-        {hasClsData && yClsAxisTicks.map((tick, i) => (
-          <g key={`y-cls-${i}`} className="text-amber-600 text-[11px]">
-            <text
-              x={width - padding.right + 8}
-              y={yClsScale(tick)}
-              dominantBaseline="middle"
-              textAnchor="start"
-              className="fill-current"
-            >
-              {tick.toFixed(3)}
-            </text>
-          </g>
-        ))}
-        {hasClsData && <text
-          x={width - 15}
-          y={height / 2}
-          transform={`rotate(90, ${width - 15}, ${height / 2})`}
-          textAnchor="middle"
-          className="text-amber-600 text-[10px] fill-current uppercase tracking-wider font-semibold"
-        >
-          CLS Score
-        </text>}
-
-        <g className="text-zinc-500 text-[11px]">
+        {/* X Axis */}
+        <g className="text-zinc-500 text-[13px]">
           <line
             x1={padding.left}
             y1={height - padding.bottom}
@@ -203,10 +170,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history }) => 
           </text>
         </g>
 
-        {lcpPath && <path d={lcpPath} fill="none" stroke={COLORS.lcp} strokeWidth="2" opacity="0.8" />}
-        {inpPath && <path d={inpPath} fill="none" stroke={COLORS.inp} strokeWidth="2" opacity="0.8" />}
-        {clsPath && <path d={clsPath} fill="none" stroke={COLORS.cls} strokeWidth="2" opacity="0.8" />}
+        {/* Data line - thicker stroke */}
+        {path && <path d={path} fill="none" stroke={config.color} strokeWidth="3" opacity="0.9" />}
 
+        {/* Hover regions */}
         {Array.from({ length: dataLength }).map((_, i) => (
           <rect
             key={`hover-${i}`}
@@ -215,11 +182,12 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history }) => 
             width="20"
             height={chartHeight}
             fill="transparent"
-            onMouseEnter={() => setHoveredPoint(i)}
+            onMouseEnter={() => onHover(i, metric)}
             style={{ cursor: 'crosshair' }}
           />
         ))}
 
+        {/* Hover indicators - larger circles */}
         {hoveredPoint !== null && (
           <g>
             <line
@@ -232,45 +200,23 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history }) => 
               strokeDasharray="4,4"
               opacity="0.3"
             />
-            {lcpData[hoveredPoint] != null && <circle cx={xScale(hoveredPoint)} cy={yTimeScale(lcpData[hoveredPoint])} r="4" fill={COLORS.lcp} stroke="#fff" strokeWidth="2" />}
-            {inpData[hoveredPoint] != null && <circle cx={xScale(hoveredPoint)} cy={yTimeScale(inpData[hoveredPoint])} r="4" fill={COLORS.inp} stroke="#fff" strokeWidth="2" />}
-            {clsData[hoveredPoint] != null && <circle cx={xScale(hoveredPoint)} cy={yClsScale(clsData[hoveredPoint])} r="4" fill={COLORS.cls} stroke="#fff" strokeWidth="2" />}
+            {data[hoveredPoint] != null && (
+                <circle cx={xScale(hoveredPoint)} cy={yScale(data[hoveredPoint])} r="5" fill={config.color} stroke="#fff" strokeWidth="2" />
+            )}
           </g>
         )}
       </svg>
       
-      {debug && (
-        <div className="absolute top-2 left-2 bg-zinc-900/95 border border-zinc-700 rounded p-2 text-xs font-mono max-w-xs z-20">
-          <div className="flex justify-between items-center mb-2">
-            <span className="font-bold text-zinc-300">CLS Debug Info</span>
-            <button 
-              onClick={() => setDebug(false)}
-              className="text-zinc-500 hover:text-zinc-300"
-            >&#x2715;</button>
-          </div>
-          <div className="space-y-1 text-zinc-400">
-            <div>hasClsData: <span className={hasClsData ? 'text-green-400' : 'text-red-400'}>{String(hasClsData)}</span></div>
-            <div>clsData length: <span className="text-amber-400">{debugInfo.clsDataLength}</span></div>
-            <div>clsMax: <span className="text-amber-400">{debugInfo.clsMax?.toFixed(4)}</span></div>
-            <div>clsScaleMin: <span className="text-amber-400">{debugInfo.clsScaleMin?.toFixed(4)}</span></div>
-            <div>clsScaleMax: <span className="text-amber-400">{debugInfo.clsScaleMax?.toFixed(4)}</span></div>
-            <div>clsPath exists: <span className={clsPath ? 'text-green-400' : 'text-red-400'}>{String(!!clsPath)}</span></div>
-            <div className="pt-1 border-t border-zinc-700">First 5 CLS values:</div>
-            <div className="text-amber-400 break-all">{JSON.stringify(debugInfo.clsData)}</div>
-          </div>
-        </div>
-      )}
-
-      {hoveredPoint !== null && (
+      {isHoverTarget && hoveredPoint !== null && (
         <div
-          className="absolute bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl pointer-events-none z-10"
+          className="absolute bg-zinc-900 border border-zinc-700 rounded-lg p-3 shadow-xl pointer-events-none z-10 w-48"
           style={{
-            left: Math.min(xScale(hoveredPoint) + 10, width - 200),
-            top: padding.top + 10,
+            left: xScale(hoveredPoint) + 15 > width - 200 ? xScale(hoveredPoint) - 205 : xScale(hoveredPoint) + 15,
+            top: padding.top,
           }}
         >
-          <div className="text-xs text-zinc-400 mb-2">
-            {dates[hoveredPoint] || `Data point ${hoveredPoint + 1}`}
+          <div className="text-xs text-zinc-400 mb-2 font-mono">
+            {dates[hoveredPoint] ? dates[hoveredPoint].split(' to ')[0] : `Point ${hoveredPoint + 1}`}
           </div>
           <div className="space-y-1 text-sm">
             {lcpData[hoveredPoint] != null && (
@@ -294,15 +240,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history }) => 
           </div>
         </div>
       )}
-
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center justify-center gap-4 text-xs bg-zinc-900/80 px-4 py-2 rounded-lg border border-zinc-800">
-        {Object.entries(COLORS).map(([key, color]) => (
-          <div key={key} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color }} />
-            <span className="font-medium text-zinc-400">{key.toUpperCase()}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };

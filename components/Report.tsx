@@ -66,6 +66,14 @@ const MetricsGrid = ({ metrics }: { metrics: FormFactorAnalysis['metrics'] }) =>
 
 const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, reportMarkdown: string }) => {
     const [activeTab, setActiveTab] = useState<'phone' | 'desktop'>('phone');
+    const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
+    const [hoverTarget, setHoverTarget] = useState<'lcp' | 'cls' | 'inp' | null>(null);
+    
+    const handleHover = (index: number | null, metric: 'lcp' | 'cls' | 'inp') => {
+        setHoveredPoint(index);
+        setHoverTarget(index === null ? null : metric);
+    };
+
     const activeData = site[activeTab];
 
     return (
@@ -105,10 +113,18 @@ const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, 
             {/* Trend Chart */}
             <div className="space-y-4 pt-4">
                  <h4 className="text-md font-semibold text-zinc-300">Trend Analysis (Last 25 Weeks)</h4>
-                 <div className="h-64 bg-zinc-950/50 p-4 rounded-lg border border-zinc-800">
-                    <TimeSeriesChart 
-                        history={activeData.history} 
-                    />
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {(['lcp', 'cls', 'inp'] as const).map((metric) => (
+                        <div key={metric} className="h-64 bg-zinc-950/50 p-2 rounded-lg border border-zinc-800 relative">
+                            <TimeSeriesChart
+                                history={activeData.history}
+                                metric={metric}
+                                hoveredPoint={hoveredPoint}
+                                onHover={handleHover}
+                                isHoverTarget={hoverTarget === metric}
+                            />
+                        </div>
+                    ))}
                  </div>
             </div>
 

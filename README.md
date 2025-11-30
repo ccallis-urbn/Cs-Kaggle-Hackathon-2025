@@ -1,224 +1,119 @@
 # CrUX Intelligence Assistant
 
-A multi-agent web performance auditing system powered by the **Chrome User Experience Report (CrUX)** and **Google Gemini 2.5**.
+A multi-agent web performance auditing system powered by the **Chrome User Experience Report (CrUX)** and **Google Gemini**. This assistant automates the complex process of fetching, analyzing, and interpreting real-user performance data to provide actionable insights.
 
-## 1. Problem
-Understanding web performance is complex.
-*   **Data Fragmentation:** Metrics live in different silos (Mobile vs Desktop, Record vs History).
-*   **Context Missing:** A raw number (e.g., "LCP 2500ms") doesn't tell you if the site is improving or degrading over time.
-*   **Manual Effort:** Comparing multiple competitors or tracking regression trends requires tedious manual data entry.
+![Application Screenshot](https://storage.googleapis.com/aistudio-ux-team/prompts/5a5c6023-e283-49d6-84ba-7a871dfa3a99.png)
 
-## 2. Solution
-The **CrUX Intelligence Assistant** is an autonomous system built using **Google Agent Development Kit (ADK)** patterns. It orchestrates specific workflows to:
-*   **Parallelize** data fetching for multiple devices.
-*   **Loop** through lists of domains for batch auditing.
-*   **Sequence** specialized analysis agents to produce high-quality narratives.
-*   **Log** everything to Google Sheets for observability.
+## How to Use the Assistant
 
-## 3. Architecture: A Formal ADK Implementation
-The system is architected using a formal implementation of the [ADK Workflow Patterns](https://google.github.io/adk-docs/agents/workflow-agents/). The code structure directly reflects the separation of concerns between agents and their tools.
+The application is designed to be intuitive for both single-site analysis and large-scale competitive batch audits.
 
-### A. The Coordinator (`App.tsx`)
-*   **Pattern:** `Loop Workflow`
-*   **Responsibility:** Acts as the primary orchestrator. It manages the UI, the task queue of domains, the overall state, and invokes the specialized agents in the correct sequence.
+### 1. Performing an Audit
 
-### B. Specialized Agents (`/agents`)
-This directory contains the logic for each individual agent in the workflow. Each agent is responsible for a single, well-defined task.
+*   **Single Site Audit:** Enter a single, fully-qualified URL (e.g., `https://www.example.com`) into the input field and click "Start Audit".
+*   **Batch Audit:** Enter a comma-separated list of URLs to compare multiple sites at once. The system will process each site sequentially and generate a final comparative report.
 
-#### 1. Query Agent (`agents/queryAgent.ts`)
-*   **Pattern:** `Tool-Using Agent` (Parallel)
-*   **Responsibility:** Fetches raw performance data.
-*   **Behavior:** It uses the `fetchCrUXData` tool from its service layer to get data for both Mobile and Desktop in parallel.
+### 2. Configuration
 
-#### 2. Historian Agent (`agents/historianAgent.ts`)
-*   **Pattern:** `Cognitive Agent` (Sequential)
-*   **Responsibility:** Analyzes historical data to find trends and regressions.
-*   **Behavior:** It uses the `analyzeTrend` tool (an LLM prompt) to interpret time-series data passed to it by the Coordinator.
+Before starting an audit, you must provide either a CrUX API Key or a Google Apps Script Proxy URL in the **Configuration** section. See **Setup Instructions** below for details.
 
-#### 3. Interpreter Agent (`agents/interpreterAgent.ts`)
-*   **Pattern:** `Cognitive Agent` (Sequential)
-*   **Responsibility:** Synthesizes all available data into a final, human-readable report.
-*   **Behavior:** It takes the raw data from the Query Agent and the trend analysis from the Historian Agent and uses the `synthesizeReport` tool to generate a strategic summary.
+### 3. Monitoring the Workflow
 
-### C. The Toolbelt (`/services`)
-This directory contains the "tools" that the agents use. These are lower-level functions that interact with external APIs (CrUX, Gemini). This separation allows an agent's logic to be changed without altering the underlying API calls.
+As the audit runs, the **Agent Graph** visualizes the process in real-time, showing which agent is currently active. The logs provide a detailed, timestamped transcript of each agent's operations and findings.
 
-## 4. Setup Instructions
+### 4. Interpreting the Report
 
-### A. API Key Safety (Standard)
-**NEVER** commit your API keys to GitHub.
-1.  Create a file named `.env` in the root of your project.
-2.  Add your keys there:
-    ```bash
-    CRUX_API_KEY=your_google_cloud_key_here
-    ```
-3.  The project includes a `.gitignore` file which tells Git to **ignore** the `.env` file.
+Once complete, the report provides a multi-faceted view of performance:
 
-### B. Google Apps Script Proxy (Recommended)
-This method keeps your API Key completely hidden on Google's servers and enables data logging.
+*   **Device Tabs:** Easily switch between **Mobile** and **Desktop** performance data.
+*   **Metrics Grid:** An at-a-glance summary of the three Core Web Vitals (LCP, CLS, INP), color-coded based on Google's "Good," "Needs Improvement," and "Poor" thresholds.
+*   **Trend Analysis:** A grid of interactive charts displays the 25-week performance history for each metric. Hover over any point on the charts to see the specific values for that collection period, synchronized across all three charts.
+*   **AI-Powered Insights:** A detailed narrative generated by the Interpreter Agent, including an executive summary, an analysis of the gap between mobile and desktop performance, and a prioritized list of technical recommendations.
+*   **Batch Comparison:** In batch mode, a master scoreboard table provides a clear comparison across all audited sites, followed by a final verdict declaring the performance winner.
+
+---
+
+## How It Works: A Multi-Agent System
+
+This application is a formal implementation of **Google's Agent Development Kit (ADK)** patterns. It orchestrates a team of specialized AI agents that collaborate to solve the complex task of performance auditing.
+
+**Workflow:**
+`User Input` -> `Coordinator` -> `[Query Agent -> Historian Agent -> Interpreter Agent]` -> `Final Report`
+
+### The Agents
+
+#### 1. The Coordinator (`App.tsx`)
+*   **ADK Pattern:** `Loop Workflow` & `Orchestrator`
+*   **Role:** The project manager. It manages the user interface, maintains the queue of domains for batch processing, and directs the flow of data between the other agents.
+
+#### 2. The Query Agent (`agents/queryAgent.ts`)
+*   **ADK Pattern:** `Tool-Using Agent` (Parallel Execution)
+*   **Role:** The data retriever. Its sole job is to fetch raw performance metrics. It uses its tools to make parallel calls to the CrUX API for both Mobile and Desktop data simultaneously, speeding up the process.
+
+#### 3. The Historian Agent (`agents/historianAgent.ts`)
+*   **ADK Pattern:** `Cognitive Agent`
+*   **Role:** The trend analyst. It receives the 25-week historical data from the Query Agent and uses a Gemini-powered "tool" to analyze the time-series data, identifying significant regressions, improvements, or periods of volatility.
+
+#### 4. The Interpreter Agent (`agents/interpreterAgent.ts`)
+*   **ADK Pattern:** `Cognitive Agent`
+*   **Role:** The strategist. This is the final agent in the chain. It synthesizes the raw data from the Query Agent and the trend analysis from the Historian Agent into a coherent, strategic, and human-readable report with actionable recommendations.
+
+### The Toolbelt (`/services`)
+
+This directory contains the low-level functions (the "tools") that the agents use to interact with external APIs like CrUX and Gemini. This separation of concerns means an agent's reasoning logic can be modified without changing how it makes an API call.
+
+---
+
+## Setup Instructions
+
+You have two methods for configuring the assistant to access the necessary APIs.
+
+### Option 1: Direct API Key (Simple)
+
+1.  **Get a Key:** Create an API key from your Google Cloud Console. Ensure the **Chrome User Experience Report API** is enabled for your project. This single key is used for both CrUX and Gemini API calls.
+2.  **Paste in UI:** Copy the key and paste it directly into the "Google CrUX: API Key OR Proxy URL" input field in the app's **Configuration** section.
+
+*Note: For local development, you can create a `.env` file in the project root and add `CRUX_API_KEY=your_key_here` to have it loaded automatically.*
+
+### Option 2: Google Apps Script Proxy (Recommended & Secure)
+
+This method is more secure as it keeps your API key on Google's servers and is required for the optional logging-to-Google-Sheets feature.
 
 #### Step 1: Create the Script
-1.  Create a new script at [script.google.com](https://script.google.com).
-2.  Paste this **v5 Code** (Supports /fetch, /history, /compare and Logging):
-    ```javascript
-    function doGet(e) {
-      const startTime = new Date().getTime(); // Track latency
-      const scriptProps = PropertiesService.getScriptProperties();
-      const apiKey = scriptProps.getProperty('CRUX_API_KEY');
-      const sheetId = scriptProps.getProperty('SHEET_ID');
-      
-      if (!apiKey) return outputError('Server Config: API key missing');
-      
-      const origin = e.parameter.origin;
-      const url = e.parameter.url; // Optional: specific URL vs origin
-      const formFactor = e.parameter.formFactor || 'PHONE';
-      const endpoint = e.parameter.endpoint || 'fetch'; 
-      
-      if (!origin) return outputError('Client Error: origin required');
-      
-      // -- ROUTER --
-      let result = {};
-      let responseStatus = 'success';
-      let errorMsg = null;
-      
-      try {
-        if (endpoint === 'compare') {
-           const phone = fetchCrUX(origin, 'PHONE', 'queryRecord', apiKey);
-           const desktop = fetchCrUX(origin, 'DESKTOP', 'queryRecord', apiKey);
-           result = { phone, desktop };
-           
-           // Check for errors in compare
-           if (phone.error || desktop.error) {
-             responseStatus = 'partial_error';
-             errorMsg = `Phone: ${phone.error || 'OK'}, Desktop: ${desktop.error || 'OK'}`;
-           }
-           
-        } else {
-           const method = endpoint === 'history' ? 'queryHistoryRecord' : 'queryRecord';
-           const apiUrl = `https://chromeuxreport.googleapis.com/v1/records:${method}?key=${apiKey}`;
-           result = fetchCrUXRaw(apiUrl, origin, formFactor);
-           
-           // Check for errors
-           if (result.error) {
-             responseStatus = 'error';
-             errorMsg = result.error.message || JSON.stringify(result.error);
-           }
-        }
-      } catch (err) {
-        responseStatus = 'error';
-        errorMsg = err.toString();
-        result = { error: errorMsg };
-      }
-      
-      const endTime = new Date().getTime();
-      const latency = endTime - startTime; // ms
-      
-      // -- LOGGING --
-      if (sheetId) {
-        if (endpoint === 'compare') {
-          // Log each device separately for compare endpoint
-          logToSheet(sheetId, endpoint, origin, url, 'PHONE', result.phone, latency, responseStatus, errorMsg);
-          logToSheet(sheetId, endpoint, origin, url, 'DESKTOP', result.desktop, latency, responseStatus, errorMsg);
-        } else {
-          logToSheet(sheetId, endpoint, origin, url, formFactor, result, latency, responseStatus, errorMsg);
-        }
-      }
-      
-      return ContentService.createTextOutput(JSON.stringify(result))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // Helper: Execute Raw Fetch
-    function fetchCrUXRaw(url, origin, formFactor) {
-        const response = UrlFetchApp.fetch(url, {
-          method: 'post',
-          contentType: 'application/json',
-          payload: JSON.stringify({ origin, formFactor }),
-          muteHttpExceptions: true
-        });
-        return JSON.parse(response.getContentText());
-    }
-
-    // Helper: Wrapper for Compare logic
-    function fetchCrUX(origin, formFactor, method, key) {
-        const url = `https://chromeuxreport.googleapis.com/v1/records:${method}?key=${key}`;
-        return fetchCrUXRaw(url, origin, formFactor);
-    }
-
-    function logToSheet(sheetId, endpoint, origin, url, device, jsonResponse, latency, status, errorMsg) {
-      try {
-        const sheet = SpreadsheetApp.openById(sheetId).getSheets()[0];
-        const timestamp = new Date();
-        
-        // Default values
-        let lcp = 'N/A', cls = 'N/A', inp = 'N/A', ttfb = 'N/A', onload = 'N/A';
-        
-        // Extract metrics if available
-        if (jsonResponse && jsonResponse.record && jsonResponse.record.metrics) {
-          const m = jsonResponse.record.metrics;
-          
-          if (endpoint === 'history') {
-            // History: Get most recent value from timeseries
-            const getLast = (metric) => {
-              const arr = metric?.percentilesTimeseries?.p75s;
-              return Array.isArray(arr) && arr.length > 0 ? arr[arr.length - 1] : 'N/A';
-            };
-            lcp = getLast(m.largest_contentful_paint);
-            cls = getLast(m.cumulative_layout_shift);
-            inp = getLast(m.interaction_to_next_paint);
-            ttfb = getLast(m.experimental_time_to_first_byte);
-            onload = getLast(m.experimental_onload);
-          } else {
-            // Fetch/Compare: Get p75 values
-            lcp = m.largest_contentful_paint?.percentiles?.p75 ?? 'N/A';
-            cls = m.cumulative_layout_shift?.percentiles?.p75 ?? 'N/A';
-            inp = m.interaction_to_next_paint?.percentiles?.p75 ?? 'N/A';
-            ttfb = m.experimental_time_to_first_byte?.percentiles?.p75 ?? 'N/A';
-            onload = m.experimental_onload?.percentiles?.p75 ?? 'N/A';
-          }
-        }
-        
-        // Log row: timestamp, endpoint, origin, url, device, lcp, cls, inp, ttfb, onload, latency, status, error
-        sheet.appendRow([
-          timestamp,
-          endpoint,
-          origin,
-          url || origin, // Use URL if provided, otherwise origin
-          device,
-          lcp,
-          cls,
-          inp,
-          ttfb,
-          onload,
-          latency,
-          status,
-          errorMsg || ''
-        ]);
-      } catch (e) {
-        console.log("Log Error: " + e);
-      }
-    }
-
-    function outputError(msg) {
-        return ContentService.createTextOutput(JSON.stringify({ error: msg }))
-          .setMimeType(ContentService.MimeType.JSON);
-    }
-    ```
+1.  Go to [script.google.com](https://script.google.com) and create a new project.
+2.  Delete the placeholder code and paste the entire `v5 Code` from the project's `README.md` file.
+3.  Save the project.
 
 #### Step 2: Set the Secret Key
-1.  Project Settings (Gear Icon) -> **Script Properties**.
-2.  Add `CRUX_API_KEY` with your actual Google Cloud API Key.
-3.  (Optional) Add `SHEET_ID` with the ID of a Google Sheet to enable logging.
+1.  In the Apps Script editor, go to **Project Settings** (the gear icon).
+2.  Under **Script Properties**, click **Add script property**.
+3.  Create a property with the **Name** `CRUX_API_KEY` and the **Value** as your actual Google Cloud API Key.
+4.  (Optional) To enable logging, add another property named `SHEET_ID` with the ID of a Google Sheet you want to log results to.
 
-#### Step 3: Deploy (CRITICAL)
-1.  **Deploy** -> **New Deployment**.
-2.  Select **Web App**.
-3.  Execute as: **Me**.
-4.  **Who has access: Anyone**. (This is required to avoid "Failed to fetch" CORS errors).
-5.  Copy the URL and paste it into the React App.
+#### Step 3: Deploy the Script
+1.  Click the **Deploy** button and select **New Deployment**.
+2.  For "Select type," choose **Web app**.
+3.  Configure the deployment:
+    *   Description: `CrUX API Proxy`
+    *   Execute as: **Me**
+    *   Who has access: **Anyone** (This is critical to prevent CORS errors in the browser).
+4.  Click **Deploy**.
+5.  Copy the provided **Web app URL**.
 
-## 5. MCP Server (Optional)
-To use this tool with external agents (like Claude Desktop):
-1.  Copy the code from the **MCP Server** tab in the UI.
-2.  Run it locally with Node.js.
-3.  Connect your agent to the local server.
+#### Step 4: Use in the App
+Paste the copied Web app URL into the "Google CrUX: API Key OR Proxy URL" input field. The application will automatically detect that it's a proxy URL.
+
+---
+
+## For Advanced Users: MCP Server
+
+The application includes a tab labeled **MCP Server**. This contains a ready-to-run Node.js script that exposes the CrUX data-fetching capabilities as tools over the **Model-Context Protocol (MCP)**.
+
+This allows you to connect other AI agents (such as those running in Claude Desktop or other environments) to this application's toolbelt, enabling them to conduct performance audits autonomously.
+
+To use it:
+1.  Copy the code from the **MCP Server** tab.
+2.  Save it locally as a file (e.g., `crux-mcp-server.js`).
+3.  Install dependencies: `npm install @modelcontextprotocol/sdk zod`.
+4.  Set your proxy URL as an environment variable: `export GAS_PROXY_URL="Your_Script_URL_Here"`.
+5.  Run the server: `node crux-mcp-server.js`.

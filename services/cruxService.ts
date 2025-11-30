@@ -133,9 +133,14 @@ const processRawData = (current: CrUXResponse, history: CrUXHistoryResponse | nu
 
     const getTrend = (historyMetric: any, currentMetric: number | string) => {
         const trendData = historyMetric?.percentilesTimeseries.p75s;
-        return Array.isArray(trendData) 
-            ? trendData.filter((x): x is number => typeof x === 'number') 
-            : [Number(currentMetric)];
+        if (Array.isArray(trendData)) {
+            // Handle cases where p75s can be strings (CLS) or numbers (LCP/INP)
+            return trendData
+                .map(x => (x === null ? null : Number(x))) // Convert all values to numbers or null
+                .filter((x): x is number => x !== null && isFinite(x)); // Filter out any nulls or NaNs
+        }
+        // Fallback for when history is not available
+        return [Number(currentMetric)];
     };
 
     const lcpTrend = getTrend(historyMetrics?.largest_contentful_paint, lcp);
