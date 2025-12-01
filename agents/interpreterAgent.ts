@@ -12,8 +12,27 @@ export const runInterpreterAgent = async (
   analysis: AnalysisResult,
   historianNotes: string
 ): Promise<string> => {
-    // This agent's logic is to call the 'synthesizeReport' tool.
-    return synthesizeReport(domain, analysis, historianNotes);
+    // Create a lean summary object for the LLM to prune tokens.
+    // The Historian agent has already analyzed the trends, so sending the raw
+    // history arrays to the Interpreter is redundant and wastes tokens.
+    const summarizedAnalysis = {
+        domain: analysis.domain,
+        phone: {
+            metrics: analysis.phone.metrics,
+            regressions: analysis.phone.regressions,
+            collectionPeriod: analysis.phone.collectionPeriod,
+        },
+        desktop: {
+            metrics: analysis.desktop.metrics,
+            regressions: analysis.desktop.regressions,
+            collectionPeriod: analysis.desktop.collectionPeriod,
+        }
+    };
+    
+    // This agent's logic is to call the 'synthesizeReport' tool with the pruned context.
+    // We cast to `any` because the object is structurally similar enough for JSON.stringify,
+    // and it avoids needing a separate type for this one-off summarization.
+    return synthesizeReport(domain, summarizedAnalysis as any, historianNotes);
 };
 
 /**

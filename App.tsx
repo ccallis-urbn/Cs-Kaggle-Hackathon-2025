@@ -39,6 +39,12 @@ const INITIAL_MEMORY: AgentMemory = {
     interpreter: { lastAnalysis: null, lastRecommendations: '' }
 };
 
+interface CachedResult {
+  analysis: AnalysisResult;
+  historianNotes: string;
+  markdown: string;
+}
+
 export default function App() {
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -56,6 +62,7 @@ export default function App() {
   const [completedData, setCompletedData] = useState<AnalysisResult[]>([]);
   const [individualReports, setIndividualReports] = useState<string[]>([]);
   const isProcessingRef = useRef(false);
+  const cacheRef = useRef<Map<string, CachedResult>>(new Map());
 
   // --- UI & CONFIG STATE ---
   const [activeTab, setActiveTab] = useState<'auditor' | 'server'>('auditor');
@@ -173,6 +180,30 @@ export default function App() {
             return;
         }
 
+        // CACHE CHECK: Before running agents, check for cached results.
+        if (cacheRef.current.has(currentTarget)) {
+            addLog('Assistant', `Cache hit for ${currentTarget}. Loading from memory.`, 'success');
+            const cached = cacheRef.current.get(currentTarget)!;
+            
+            setMemory(prev => ({
+                ...prev,
+                query: { lastDomain: currentTarget, lastRawResults: cached.analysis },
+                historian: { lastTrend: cached.historianNotes, lastHistoryData: null },
+                interpreter: { lastAnalysis: cached.analysis, lastRecommendations: cached.markdown }
+            }));
+            setCompletedData(prev => [...prev, cached.analysis]);
+            setIndividualReports(prev => [...prev, cached.markdown]);
+
+            const remainingTasks = taskQueue.slice(1);
+            setTaskQueue(remainingTasks);
+            if (remainingTasks.length > 0) {
+                setAgentState(AgentState.QUERY);
+            }
+            isProcessingRef.current = false;
+            return; // Skip agent execution for this cached item
+        }
+
+
         try {
             const taskNumber = totalTasks - taskQueue.length + 1;
             addLog('Assistant', `[${taskNumber}/${totalTasks}] Processing ${currentTarget}`, 'info');
@@ -215,6 +246,16 @@ export default function App() {
                     if (!dataForInterpreter || notesForInterpreter === null) throw new Error("Memory inconsistency: Data not found for Interpreter.");
                     
                     const markdown = await runInterpreterAgent(currentTarget, dataForInterpreter, notesForInterpreter);
+                    
+                    // CACHE WRITE: Store the successful result in the session cache.
+                    if (totalTasks > 0) {
+                        cacheRef.current.set(currentTarget, {
+                            analysis: dataForInterpreter,
+                            historianNotes: notesForInterpreter,
+                            markdown: markdown
+                        });
+                        addLog('Assistant', `Results for ${currentTarget} cached for this session.`, 'info');
+                    }
                                         
                     setMemory(prev => ({ ...prev, interpreter: { lastAnalysis: dataForInterpreter, lastRecommendations: markdown } }));
                     

@@ -2,8 +2,6 @@
 
 A multi-agent web performance auditing system powered by the **Chrome User Experience Report (CrUX)** and **Google Gemini**. This assistant automates the complex process of fetching, analyzing, and interpreting real-user performance data to provide actionable insights.
 
-![Application Screenshot](https://storage.googleapis.com/aistudio-ux-team/prompts/5a5c6023-e283-49d6-84ba-7a871dfa3a99.png)
-
 ## How to Use the Assistant
 
 The application is designed to be intuitive for both single-site analysis and large-scale competitive batch audits.

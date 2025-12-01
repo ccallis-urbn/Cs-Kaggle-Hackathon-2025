@@ -44,7 +44,7 @@ export const analyzeTrend = async (domain: string, analysis: AnalysisResult): Pr
       1. Analyze the trend stability for ALL THREE metrics (LCP, CLS, INP). Is it flat, volatile, or degrading?
       2. Detect any sudden jumps (>10% change) in any metric.
       3. Compare the stability of Mobile vs Desktop across all metrics.
-      4. Output a brief, data-heavy paragraph focusing ONLY on the timeline from the last 25 weeks. Refer to it as "the last 25 weeks".
+      4. Output a single, data-heavy paragraph of no more than 75 words focusing ONLY on the timeline from the last 25 weeks. Refer to it as "the last 25 weeks".
     `;
 
     try {
@@ -66,7 +66,7 @@ export const analyzeTrend = async (domain: string, analysis: AnalysisResult): Pr
  */
 export const synthesizeReport = async (
   domain: string,
-  analysis: AnalysisResult,
+  analysis: AnalysisResult, // Note: This will be a summarized version without history trends
   historianNotes: string
 ): Promise<string> => {
   const ai = getAI();
@@ -87,7 +87,7 @@ export const synthesizeReport = async (
     1. **Executive Summary:** High-level health check.
     2. **Device Gap:** Explain why Mobile score (${analysis.phone.metrics.lcp.value}ms) differs from Desktop (${analysis.desktop.metrics.lcp.value}ms).
     3. **Trend Analysis:** Incorporate the Historian's notes about the 25-week trend naturally.
-    4. **Recommendations:** 3 technical fix priorities.
+    4. **Recommendations:** 3 technical fix priorities. Each recommendation must be a single sentence.
     
     Format as clean Markdown.
   `;
