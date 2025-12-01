@@ -75,30 +75,193 @@ You have two methods for configuring the assistant to access the necessary APIs.
 
 ### Option 2: Google Apps Script Proxy (Recommended & Secure)
 
-This method is more secure as it keeps your API key on Google's servers and is required for the optional logging-to-Google-Sheets feature.
+This method is more secure as it keeps your API key on Google's servers and enables optional, powerful request logging to a Google Sheet.
 
 #### Step 1: Create the Script
 1.  Go to [script.google.com](https://script.google.com) and create a new project.
-2.  Delete the placeholder code and paste the entire `v5 Code` from the project's `README.md` file.
+2.  Delete the placeholder code in `Code.gs` and paste the entire script provided below.
 3.  Save the project.
 
-#### Step 2: Set the Secret Key
-1.  In the Apps Script editor, go to **Project Settings** (the gear icon).
+```javascript
+/**
+ * Google Apps Script v5: CrUX API Proxy & Logger
+ * 
+ * A secure proxy to the CrUX API that keeps your API key on Google's servers.
+ * Features:
+ *  - Routes requests for current metrics ('fetch') and 25-week history ('history').
+ *  - A 'compare' endpoint to get Mobile and Desktop data in one call.
+ *  - Optional, detailed logging of every request to a Google Sheet.
+ */
+
+// =================== CORE LOGIC ===================
+
+function doGet(e) {
+  const startTime = new Date().getTime(); // Track latency
+  const scriptProps = PropertiesService.getScriptProperties();
+  const apiKey = scriptProps.getProperty('CRUX_API_KEY');
+  const sheetId = scriptProps.getProperty('SHEET_ID');
+  
+  if (!apiKey) return outputError('Server Config: API key missing');
+  
+  const origin = e.parameter.origin;
+  const url = e.parameter.url; // Optional: specific URL vs origin
+  const formFactor = e.parameter.formFactor || 'PHONE';
+  const endpoint = e.parameter.endpoint || 'fetch'; 
+  
+  if (!origin) return outputError('Client Error: origin required');
+  
+  // -- ROUTER --
+  let result = {};
+  let responseStatus = 'success';
+  let errorMsg = null;
+  
+  try {
+    if (endpoint === 'compare') {
+       const phone = fetchCrUX(origin, 'PHONE', 'queryRecord', apiKey);
+       const desktop = fetchCrUX(origin, 'DESKTOP', 'queryRecord', apiKey);
+       result = { phone, desktop };
+       
+       if (phone.error || desktop.error) {
+         responseStatus = 'partial_error';
+         errorMsg = `Phone: ${phone.error || 'OK'}, Desktop: ${desktop.error || 'OK'}`;
+       }
+       
+    } else {
+       const method = endpoint === 'history' ? 'queryHistoryRecord' : 'queryRecord';
+       const apiUrl = `https://chromeuxreport.googleapis.com/v1/records:${method}?key=${apiKey}`;
+       result = fetchCrUXRaw(apiUrl, origin, formFactor);
+       
+       if (result.error) {
+         responseStatus = 'error';
+         errorMsg = result.error.message || JSON.stringify(result.error);
+       }
+    }
+  } catch (err) {
+    responseStatus = 'error';
+    errorMsg = err.toString();
+    result = { error: errorMsg };
+  }
+  
+  const endTime = new Date().getTime();
+  const latency = endTime - startTime;
+  
+  // -- LOGGING --
+  if (sheetId) {
+    if (endpoint === 'compare') {
+      logToSheet(sheetId, endpoint, origin, url, 'PHONE', result.phone, latency, responseStatus, errorMsg);
+      logToSheet(sheetId, endpoint, origin, url, 'DESKTOP', result.desktop, latency, responseStatus, errorMsg);
+    } else {
+      logToSheet(sheetId, endpoint, origin, url, formFactor, result, latency, responseStatus, errorMsg);
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Helper: Execute Raw Fetch
+function fetchCrUXRaw(url, origin, formFactor) {
+    const response = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ origin, formFactor }),
+      muteHttpExceptions: true
+    });
+    return JSON.parse(response.getContentText());
+}
+
+// Helper: Wrapper for Compare logic
+function fetchCrUX(origin, formFactor, method, key) {
+    const url = `https://chromeuxreport.googleapis.com/v1/records:${method}?key=${key}`;
+    return fetchCrUXRaw(url, origin, formFactor);
+}
+
+function logToSheet(sheetId, endpoint, origin, url, device, jsonResponse, latency, status, errorMsg) {
+  try {
+    const sheet = SpreadsheetApp.openById(sheetId).getSheets()[0];
+    const timestamp = new Date();
+    let lcp = 'N/A', cls = 'N/A', inp = 'N/A';
+    
+    if (jsonResponse && jsonResponse.record && jsonResponse.record.metrics) {
+      const m = jsonResponse.record.metrics;
+      if (endpoint === 'history') {
+        const getLast = (metric) => {
+          const arr = metric?.percentilesTimeseries?.p75s;
+          return Array.isArray(arr) && arr.length > 0 ? arr[arr.length - 1] : 'N/A';
+        };
+        lcp = getLast(m.largest_contentful_paint);
+        cls = getLast(m.cumulative_layout_shift);
+        inp = getLast(m.interaction_to_next_paint);
+      } else {
+        lcp = m.largest_contentful_paint?.percentiles?.p75 ?? 'N/A';
+        cls = m.cumulative_layout_shift?.percentiles?.p75 ?? 'N/A';
+        inp = m.interaction_to_next_paint?.percentiles?.p75 ?? 'N/A';
+      }
+    }
+    
+    sheet.appendRow([ timestamp, endpoint, origin, url || origin, device, lcp, cls, inp, latency, status, errorMsg || '' ]);
+  } catch (e) {
+    console.log("Log Error: " + e);
+  }
+}
+
+function outputError(msg) {
+    return ContentService.createTextOutput(JSON.stringify({ error: msg }))
+      .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ============ ONE-TIME SETUP FUNCTION ============
+
+/**
+ * Run this function ONCE from the Apps Script editor after setting your SHEET_ID
+ * to automatically format your logging spreadsheet.
+ */
+function setupSheetHeaders() {
+  const sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  if (!sheetId) {
+    Logger.log('Error: SHEET_ID not configured. Run storeSheetId() first.');
+    return;
+  }
+  
+  try {
+    const sheet = SpreadsheetApp.openById(sheetId).getSheets()[0];
+    const headers = [ 'Timestamp', 'Endpoint', 'Origin', 'URL', 'Device', 'LCP (ms)', 'CLS', 'INP (ms)', 'Latency (ms)', 'Status', 'Error' ];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    for (let i = 1; i <= headers.length; i++) {
+      sheet.autoResizeColumn(i);
+    }
+    Logger.log('Sheet headers configured successfully!');
+  } catch (e) {
+    Logger.log('Error setting up headers: ' + e);
+  }
+}
+```
+
+#### Step 2: Set Script Properties (Secrets)
+1.  In the Apps Script editor, go to **Project Settings** (the gear icon on the left).
 2.  Under **Script Properties**, click **Add script property**.
 3.  Create a property with the **Name** `CRUX_API_KEY` and the **Value** as your actual Google Cloud API Key.
-4.  (Optional) To enable logging, add another property named `SHEET_ID` with the ID of a Google Sheet you want to log results to.
+4.  **(Optional) To enable logging:** Create a Google Sheet. Copy its ID from the URL (the long string between `/d/` and `/edit`). Add another script property with the **Name** `SHEET_ID` and the **Value** as your Google Sheet ID.
 
-#### Step 3: Deploy the Script
-1.  Click the **Deploy** button and select **New Deployment**.
-2.  For "Select type," choose **Web app**.
+#### Step 3: (Optional) Prepare the Log Sheet
+1.  If you configured a `SHEET_ID`, you need to set up the headers.
+2.  In the Apps Script editor, select the `setupSheetHeaders` function from the dropdown at the top.
+3.  Click the **Run** button. You may be asked to grant permissions the first time.
+4.  This will automatically create and format the header row in your Google Sheet. You only need to do this once.
+
+#### Step 4: Deploy the Script
+1.  Click the blue **Deploy** button and select **New Deployment**.
+2.  For "Select type," click the gear icon and choose **Web app**.
 3.  Configure the deployment:
     *   Description: `CrUX API Proxy`
     *   Execute as: **Me**
     *   Who has access: **Anyone** (This is critical to prevent CORS errors in the browser).
 4.  Click **Deploy**.
-5.  Copy the provided **Web app URL**.
+5.  Authorize the permissions if prompted.
+6.  Copy the provided **Web app URL**.
 
-#### Step 4: Use in the App
+#### Step 5: Use in the App
 Paste the copied Web app URL into the "Google CrUX: API Key OR Proxy URL" input field. The application will automatically detect that it's a proxy URL.
 
 ---
