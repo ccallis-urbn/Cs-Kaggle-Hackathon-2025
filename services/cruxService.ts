@@ -52,6 +52,8 @@ const fetchRawData = async (domain: string, apiKeyOrProxy: string, formFactor: '
     const isProxy = cleanKey.startsWith('http');
 
     if (isProxy) {
+        // NOTE: The CrUX API (and by extension, the proxy) does not use a date parameter.
+        // It automatically returns the most recent data available.
         const separator = cleanKey.includes('?') ? '&' : '?';
         const baseUrl = `${cleanKey}${separator}origin=${encodeURIComponent(domain)}&formFactor=${formFactor}`;
 
@@ -88,6 +90,9 @@ const fetchRawData = async (domain: string, apiKeyOrProxy: string, formFactor: '
 
     } else {
         // Direct API Mode (Fallback for local dev with API Keys)
+        
+        // NOTE: The CrUX API does not accept a date parameter. It always returns the
+        // most recent 28-day collection period automatically, so we don't provide a date.
         const currentRes = await fetch(`${CRUX_API_BASE}?key=${cleanKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -98,6 +103,8 @@ const fetchRawData = async (domain: string, apiKeyOrProxy: string, formFactor: '
         currentData = await currentRes.json();
 
         try {
+            // NOTE: The CrUX History API also returns the latest data (last 25 weeks)
+            // without requiring a date parameter.
             const historyRes = await fetch(`${CRUX_HISTORY_API_BASE}?key=${cleanKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

@@ -18,11 +18,14 @@ import { AgentGraph } from './components/AgentGraph';
 import { MCPServerView } from './components/MCPServerView';
 import { Report } from './components/Report';
 import { Logs } from './components/Logs';
+import { ExportCharts } from './components/ExportCharts';
 import { runQueryAgent } from './agents/queryAgent';
 import { runHistorianAgent } from './agents/historianAgent';
 import { runInterpreterAgent, runBatchComparisonAgent } from './agents/interpreterAgent';
-import { AgentState, LogEntry, AnalysisResult, AgentMemory } from './types';
+import { AgentState, LogEntry, AnalysisResult, AgentMemory, FormFactorAnalysis, ExportFormat } from './types';
 import { INITIAL_LOGS } from './constants';
+import { ExportService } from './ExportService';
+import { initClient } from './services/googleDocsService';
 
 const PRESET_DOMAINS = [
     'https://www.wikipedia.org',
@@ -46,10 +49,6 @@ interface CachedResult {
 }
 
 export default function App() {
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   // --- CORE STATE ---
   const [domain, setDomain] = useState('');
   const [memory, setMemory] = useState<AgentMemory>(INITIAL_MEMORY);
@@ -67,6 +66,29 @@ export default function App() {
   // --- UI & CONFIG STATE ---
   const [activeTab, setActiveTab] = useState<'auditor' | 'server'>('auditor');
   
+  // --- EXPORT STATE ---
+  const [isExporting, setIsExporting] = useState(false);
+  const [gapiLoaded, setGapiLoaded] = useState(false);
+  
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    
+    // Initialize Google API Client for Export
+    const script = document.createElement('script');
+    script.src = "https://apis.google.com/js/api.js";
+    script.onload = () => {
+        const gisScript = document.createElement('script');
+        gisScript.src = "https://accounts.google.com/gsi/client";
+        gisScript.onload = () => {
+            initClient(() => {
+                setGapiLoaded(true);
+            });
+        };
+        document.body.appendChild(gisScript);
+    };
+    document.body.appendChild(script);
+  }, []);
+
   const getEnvKey = () => {
     try {
       if (typeof process !== 'undefined' && process.env) {
@@ -100,6 +122,42 @@ export default function App() {
       type
     }]);
   }, []);
+
+  const handleExport = useCallback(async (format: ExportFormat) => {
+    if (!memory.interpreter.lastAnalysis || !memory.interpreter.lastRecommendations) {
+        addLog('Assistant', 'No report data to export.', 'error');
+        return;
+    }
+    
+    setIsExporting(true);
+    addLog('Assistant', `Exporting report as ${format.toUpperCase()}...`, 'info');
+
+    try {
+        // Capture charts if format supports images (PDF, DOCX, Google Docs)
+        // For now, we'll focus on the data structure. 
+        // Capturing charts requires them to be in the DOM.
+        
+        const result = await ExportService.export({
+            format,
+            data: memory.interpreter.lastAnalysis,
+            batchData: completedData,
+            markdown: memory.interpreter.lastRecommendations,
+            individualReports: individualReports
+        });
+
+        if (format === 'google-docs' && typeof result === 'string') {
+            addLog('Assistant', 'Google Doc created successfully!', 'success');
+            window.open(result, '_blank');
+        } else {
+            addLog('Assistant', `Report exported successfully as ${format.toUpperCase()}`, 'success');
+        }
+    } catch (error: any) {
+        addLog('Assistant', `Failed to export report: ${error.message}`, 'error');
+        console.error('Export error:', error);
+    } finally {
+        setIsExporting(false);
+    }
+  }, [memory.interpreter.lastAnalysis, memory.interpreter.lastRecommendations, completedData, individualReports, addLog]);
 
   /**
    * Kicks off the intelligence workflow by setting up the initial state.
@@ -169,9 +227,8 @@ export default function App() {
 
                 setMemory(prev => ({
                     ...prev,
-                    // Store the last item for consistency, but completedData is the source of truth for batch reports
                     query: { ...prev.query, lastRawResults: completedData[completedData.length - 1] }, 
-                    interpreter: { ...prev.interpreter, lastRecommendations: finalMarkdownOutput }
+                    interpreter: { ...prev.interpreter, lastAnalysis: completedData[completedData.length - 1], lastRecommendations: finalMarkdownOutput }
                 }));
             }
             addLog('Assistant', 'Intelligence cycle complete.', 'success');
@@ -247,7 +304,6 @@ export default function App() {
                     
                     const markdown = await runInterpreterAgent(currentTarget, dataForInterpreter, notesForInterpreter);
                     
-                    // CACHE WRITE: Store the successful result in the session cache.
                     if (totalTasks > 0) {
                         cacheRef.current.set(currentTarget, {
                             analysis: dataForInterpreter,
@@ -259,17 +315,13 @@ export default function App() {
                                         
                     setMemory(prev => ({ ...prev, interpreter: { lastAnalysis: dataForInterpreter, lastRecommendations: markdown } }));
                     
-                    // Update batch tracking state
                     setCompletedData(prev => [...prev, dataForInterpreter]);
                     setIndividualReports(prev => [...prev, markdown]);
 
-                    // Dequeue and decide next step
                     addLog('Assistant', `Cycle complete for ${currentTarget}.`, 'success');
                     const remainingTasks = taskQueue.slice(1);
                     setTaskQueue(remainingTasks);
                     
-                    // If more tasks, loop back to QUERY. 
-                    // If not, the effect will re-run with an empty queue and trigger completion.
                     if (remainingTasks.length > 0) {
                         await new Promise(r => setTimeout(r, 800)); // Pause before next cycle
                         setAgentState(AgentState.QUERY);
@@ -430,12 +482,14 @@ export default function App() {
 
                 {/* Results Area */}
                 <div className="min-h-[300px]">
-                    {agentState === AgentState.COMPLETE && memory.query.lastRawResults && (
+                    {agentState === AgentState.COMPLETE && memory.interpreter.lastAnalysis && (
                         <Report 
                             markdown={memory.interpreter.lastRecommendations} 
-                            data={memory.query.lastRawResults} 
+                            data={memory.interpreter.lastAnalysis} 
                             batchData={completedData.length > 1 ? completedData : undefined}
                             individualReports={completedData.length > 1 ? individualReports : undefined}
+                            isExporting={isExporting}
+                            onExport={handleExport}
                         />
                     )}
                     
@@ -467,6 +521,7 @@ export default function App() {
             <MCPServerView />
         )}
       </main>
+      <ExportCharts batchData={completedData.length > 0 ? completedData : (memory.interpreter.lastAnalysis ? [memory.interpreter.lastAnalysis] : [])} />
     </div>
   );
 }

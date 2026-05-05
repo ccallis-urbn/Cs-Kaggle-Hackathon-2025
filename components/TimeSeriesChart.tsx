@@ -2,6 +2,7 @@ import React from 'react';
 import { FormFactorAnalysis } from '../types';
 
 interface TimeSeriesChartProps {
+  id?: string;
   history: FormFactorAnalysis['history'];
   metric: 'lcp' | 'cls' | 'inp';
   hoveredPoint: number | null;
@@ -51,11 +52,11 @@ const generateTicks = (min: number, max: number, count = 4) => {
   return ticks;
 };
 
-export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history, metric, hoveredPoint, onHover, isHoverTarget }) => {
+export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ id, history, metric, hoveredPoint, onHover, isHoverTarget }) => {
   const ref = React.useRef<HTMLDivElement>(null);
   const { width, height } = useParentSize(ref);
 
-  if (width === 0 || height === 0) return <div ref={ref} className="w-full h-full" />;
+  if (width === 0 || height === 0) return <div ref={ref} id={id} className="w-full h-full" />;
 
   const config = METRIC_CONFIG[metric];
   const data = (history as any)[`${metric}Trend`] as number[] || [];
@@ -97,7 +98,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ history, metri
   const yAxisTicks = generateTicks(yMin, yScaleMax, 4);
 
   return (
-    <div ref={ref} className="w-full h-full relative">
+    <div ref={ref} id={id} className="w-full h-full relative">
       <svg
         width="100%"
         height="100%"

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Smartphone, Monitor, ChevronDown } from 'lucide-react';
-import { AnalysisResult, FormFactorAnalysis } from '../types';
+import { Smartphone, Monitor, ChevronDown, Download, FileText, FileCode, FileJson, Globe as GlobeIcon, ExternalLink, Database } from 'lucide-react';
+import { AnalysisResult, FormFactorAnalysis, ExportFormat } from '../types';
 import { TimeSeriesChart } from './TimeSeriesChart';
 
 interface ReportProps {
@@ -10,12 +10,10 @@ interface ReportProps {
   data: AnalysisResult;
   batchData?: AnalysisResult[];
   individualReports?: string[];
+  isExporting: boolean;
+  onExport: (format: ExportFormat) => void;
 }
 
-/**
- * A single, comprehensive configuration for rendering all markdown content.
- * This ensures styling is consistent across all reports.
- */
 const MARKDOWN_COMPONENTS: Components = {
     h1: ({node, ...props}) => <h1 className="text-xl font-bold text-indigo-300 mb-4" {...props} />,
     h2: ({node, ...props}) => <h2 className="text-lg font-semibold text-zinc-200 mt-6 mb-3 border-b border-zinc-800 pb-2" {...props} />,
@@ -35,6 +33,66 @@ const MARKDOWN_COMPONENTS: Components = {
     td: ({node, ...props}) => <td className="p-3 border-t border-zinc-800 text-sm align-top" {...props} />,
 };
 
+const ExportButton = ({ isExporting, onExport }: { isExporting: boolean, onExport: (format: ExportFormat) => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const formats: { id: ExportFormat, label: string, icon: any }[] = [
+        { id: 'google-docs', label: 'Google Docs', icon: ExternalLink },
+        { id: 'docx', label: 'Word (.docx)', icon: FileText },
+        { id: 'pdf', label: 'PDF Document', icon: Download },
+        { id: 'html', label: 'HTML Page', icon: FileCode },
+        { id: 'markdown', label: 'Markdown', icon: FileText },
+        { id: 'json', label: 'Raw Data (JSON)', icon: FileJson },
+        { id: 'csv', label: 'Metrics Table (CSV)', icon: Database },
+    ];
+
+    if (isExporting) {
+        return (
+            <div className="relative">
+                <button disabled className="px-4 py-2 text-sm font-medium bg-zinc-800 text-zinc-500 rounded-lg flex items-center gap-2 border border-zinc-700">
+                    <div className="animate-spin w-4 h-4 border-2 border-zinc-600 border-t-indigo-500 rounded-full"></div>
+                    Exporting...
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative">
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-indigo-500/20"
+            >
+                <Download size={16} />
+                Export Report
+                <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                        <div className="p-2 space-y-1">
+                            {formats.map((f) => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => {
+                                        onExport(f.id);
+                                        setIsOpen(false);
+                                    }}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors group"
+                                >
+                                    <f.icon size={16} className="text-zinc-500 group-hover:text-indigo-400" />
+                                    {f.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
 
 const MetricsGrid = ({ metrics }: { metrics: FormFactorAnalysis['metrics'] }) => (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -64,7 +122,9 @@ const MetricsGrid = ({ metrics }: { metrics: FormFactorAnalysis['metrics'] }) =>
   </div>
 );
 
-const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, reportMarkdown: string }) => {
+// This component shows the detailed view for a single site, without the main header or export button.
+// It's used for both the single-site view and the selected-site view in batch mode.
+const DetailedReportView = ({ site, reportMarkdown }: { site: AnalysisResult, reportMarkdown: string }) => {
     const [activeTab, setActiveTab] = useState<'phone' | 'desktop'>('phone');
     const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
     const [hoverTarget, setHoverTarget] = useState<'lcp' | 'cls' | 'inp' | null>(null);
@@ -78,7 +138,6 @@ const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, 
 
     return (
          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-zinc-200">Intelligence Report</h3>
             {/* Tab Switcher */}
             <div className="flex space-x-2 border-b border-zinc-800 pb-2">
                 <button
@@ -113,10 +172,11 @@ const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, 
             {/* Trend Chart */}
             <div className="space-y-4 pt-4">
                  <h4 className="text-md font-semibold text-zinc-300">Trend Analysis (Last 25 Weeks)</h4>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(['lcp', 'cls', 'inp'] as const).map((metric) => (
                         <div key={metric} className="h-64 bg-zinc-950/50 p-2 rounded-lg border border-zinc-800 relative">
                             <TimeSeriesChart
+                                id={`chart-${site.domain.replace(/[^a-z0-9]/gi, '-')}-${activeTab}-${metric}`}
                                 history={activeData.history}
                                 metric={metric}
                                 hoveredPoint={hoveredPoint}
@@ -150,10 +210,10 @@ const IndividualSiteReport = ({ site, reportMarkdown }: { site: AnalysisResult, 
                 </ReactMarkdown>
             </div>
         </div>
-    )
+    );
 }
 
-export const Report: React.FC<ReportProps> = ({ markdown, data, batchData, individualReports }) => {
+export const Report: React.FC<ReportProps> = ({ markdown, data, batchData, individualReports, ...exportProps }) => {
   const [selectedSiteIndex, setSelectedSiteIndex] = useState(0);
   const isBatchMode = batchData && batchData.length > 1 && individualReports;
 
@@ -164,49 +224,58 @@ export const Report: React.FC<ReportProps> = ({ markdown, data, batchData, indiv
         <>
             {/* Batch View: Dropdown + Individual Report */}
             <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800 space-y-6">
-                <h2 className="text-xl font-bold text-zinc-200 border-b border-zinc-800 pb-3">Intelligence Report</h2>
+                <div className="flex justify-between items-start mb-4">
+                    <h2 className="text-xl font-bold text-zinc-200">Intelligence Report</h2>
+                    <ExportButton {...exportProps} />
+                </div>
                 
                 <div>
-                    <label htmlFor="site-selector" className="block text-xs font-medium text-zinc-400 mb-2">Select a site to inspect its detailed report:</label>
+                    <label htmlFor="site-selector" className="block text-xs font-medium text-zinc-400 mb-2">
+                      Select a site to view its detailed report:
+                    </label>
                     <div className="relative">
-                        <select
-                            id="site-selector"
-                            value={selectedSiteIndex}
-                            onChange={(e) => setSelectedSiteIndex(Number(e.target.value))}
-                            className="w-full appearance-none bg-zinc-800 border border-zinc-700 rounded-lg py-2 px-4 text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                            {batchData.map((site, index) => (
-                                <option key={site.domain} value={index}>
-                                    {site.domain}
-                                </option>
-                            ))}
-                        </select>
-                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500 pointer-events-none" />
+                      <select
+                        id="site-selector"
+                        value={selectedSiteIndex}
+                        onChange={(e) => setSelectedSiteIndex(parseInt(e.target.value, 10))}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-4 pr-10 py-2 text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
+                      >
+                        {batchData.map((site, index) => (
+                          <option key={site.domain} value={index}>
+                            {site.domain}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-2.5 text-zinc-500 pointer-events-none" size={20} />
                     </div>
                 </div>
 
-                <IndividualSiteReport 
-                    site={batchData[selectedSiteIndex]}
-                    reportMarkdown={individualReports[selectedSiteIndex]}
-                />
-            </div>
-            
-            {/* Batch View: Final Comparative Conclusion */}
-            <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800">
-                <div className="text-zinc-400 text-sm">
-                    <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={MARKDOWN_COMPONENTS}
-                    >
-                        {markdown}
-                    </ReactMarkdown>
+                <div className="border-t border-zinc-800 pt-6">
+                    <DetailedReportView 
+                        site={batchData[selectedSiteIndex]}
+                        reportMarkdown={individualReports[selectedSiteIndex]}
+                    />
                 </div>
+            </div>
+
+            {/* Batch Summary */}
+            <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800">
+                 <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={MARKDOWN_COMPONENTS}
+                >
+                    {markdown}
+                </ReactMarkdown>
             </div>
         </>
       ) : (
-        // Single Site View
-        <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800">
-            <IndividualSiteReport site={data} reportMarkdown={markdown} />
+        /* Single Site View */
+        <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800 space-y-6">
+            <div className="flex justify-between items-start">
+                <h2 className="text-xl font-bold text-zinc-200">Intelligence Report</h2>
+                <ExportButton {...exportProps} />
+            </div>
+            <DetailedReportView site={data} reportMarkdown={markdown} />
         </div>
       )}
     </div>

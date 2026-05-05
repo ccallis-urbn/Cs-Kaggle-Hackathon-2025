@@ -100,6 +100,8 @@ export enum AgentState {
   ERROR = 'ERROR'
 }
 
+export type ExportFormat = 'markdown' | 'html' | 'pdf' | 'docx' | 'google-docs' | 'json' | 'csv';
+
 export interface LogEntry {
   timestamp: string;
   source: 'Assistant' | 'Query Agent' | 'Historian' | 'Interpreter';
